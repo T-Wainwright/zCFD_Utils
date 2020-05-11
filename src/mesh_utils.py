@@ -5,6 +5,11 @@ import sys
 """ 
 Utilities for handling CBA and ZCFD meshes
 
+Tom Wainwright
+
+University of Bristol 2020
+
+tom.wainwright@bristol.ac.uk
 
 
 Classes: 

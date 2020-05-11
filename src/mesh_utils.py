@@ -2,6 +2,35 @@ import numpy as np
 import h5py
 import sys
 
+""" 
+Utilities for handling CBA and ZCFD meshes
+
+
+
+Classes: 
+-   cba_mesh: CBA format multiblock structured mesh
+    -   load_cba(fname)
+    -   h5_conv()
+    -   writetec(fname)
+    -   writeblk(fname)
+    -   show_connectivity()
+
+-   cba_block: single block in CBA mesh
+    -   process_data()
+    -   conv_h5_data(f_offset,c_offset,p_offset,ghostID,h5)
+
+-   h5_mesh: Unstructured h5 format mesh
+    -   load_zcfd(fname)
+    -   writetec(fname)
+    -   writeh5(fname)
+    -   extractSurfaceFaces(facetag)
+    
+    In progress
+    -   applyDeformation(def_func)
+    -   writeLKE()
+    -   reconstruct()
+
+"""
 class cba_mesh:
     def __init__(self,fname='NONE',V=False):
         self.n_blocks = 0               # Number of blocks
@@ -22,6 +51,7 @@ class cba_mesh:
             self.load_cba(fname,V)
 
     def load_cba(self,fname,V):
+        # Load CBA structured multiblock mesh
         print('Loading CBA file')
         DATA = np.loadtxt(fname,dtype='f')
         self.n_blocks = int(DATA[0,0])
@@ -29,7 +59,7 @@ class cba_mesh:
         
 
         for i in range(self.n_blocks):
-            self.block[i] = cbablock()
+            self.block[i] = cba_block()
             self.block[i].blockID = i
             self.block[i].npts_i = int(DATA[row,0])
             self.block[i].npts_j = int(DATA[row,1])
@@ -106,9 +136,10 @@ class cba_mesh:
                 print('block1 = {} \t face1 = {} \t block2 = {} \t face2 = {}'.format(self.Common_faces[i]['block1'],self.Common_faces[i]['face1'],self.Common_faces[i]['block2'],self.Common_faces[i]['face2']))
       
     def h5_conv(self):
+        # Convert CBA format multiblock mesh to zcfd h5 format
         if self.V:
             print('Converting CBA to H5 format')
-        h5 = h5mesh(ncell=self.ncell, nface=self.nface)
+        h5 = h5_mesh(ncell=self.ncell, nface=self.nface)
         f_offset = 0
         c_offset = 0
         p_offset = 0
@@ -122,6 +153,7 @@ class cba_mesh:
         return(h5)
     
     def writetec(self,fname):
+        # Convert CBA mesh to tecplot visualisation format
         if self.V:
             print('Generating Structured tecplot file')
         fout = open(fname,"w")
@@ -133,6 +165,7 @@ class cba_mesh:
         return
 
     def writeblk(self,fname):
+        # Write saved mesh back to CBA format
         if self.V:
             print('Generating blk mesh file')
         fout = open(fname,"w")
@@ -146,13 +179,15 @@ class cba_mesh:
         return
 
     def show_connectivity(self):
+        # Show block connectivity
         for i in self.block:
             print('{} \t'.format(i))
             for j in range(6):
                 print('{} {} {} \t'.format(int(self.block[i].connectivity[j,0]),int(self.block[i].connectivity[j,1]),int(self.block[i].connectivity[j,2])))
             print('\n')
         return
-class cbablock:
+
+class cba_block:
     def __init__(self):
         # Integers
         self.blockID = 0
@@ -205,6 +240,7 @@ class cbablock:
         
 
     def process_data(self):
+        # Process individual block properties
         print('Assigning block data')
         
 
@@ -239,6 +275,7 @@ class cbablock:
         return
     
     def conv_h5_data(self,f_offset,c_offset,p_offset,ghostID,h5):
+        # Convert block data into h5 format
         print('Calculating h5 data')
 
         cellID = 0
@@ -298,10 +335,10 @@ class cbablock:
                                     ftype = self.common_faces[f]['type']
                                     if ftype == 'alligned':
                                         # print('alligned')
-                                        cellFace[cellID,f] = mesh.block[block1].face_bounds[face1][f_index[f]]
+                                        cellFace[cellID,f] = cba_mesh.block[block1].face_bounds[face1][f_index[f]]
                                     elif ftype == 'mirror':
                                         # print('mirror')
-                                        cellFace[cellID,f] = mesh.block[block1].face_bounds[face1][(self.npts_i - i -2)]
+                                        cellFace[cellID,f] = cba_mesh.block[block1].face_bounds[face1][(self.npts_i - i -2)]
                                     # print('driven')
                                     if f == 0 or f == 1:
                                         false_faces_i = false_faces_i + 1
@@ -309,7 +346,7 @@ class cbablock:
                                         false_faces_j = false_faces_j + 1
                                     elif f == 4 or f == 5:
                                         false_faces_k = false_faces_k + 1
-                                    h5.faceCell[int(cellFace[cellID,f]),0] = mesh.block[block1].cell_bounds[face1][f_index[f]]
+                                    h5.faceCell[int(cellFace[cellID,f]),0] = cba_mesh.block[block1].cell_bounds[face1][f_index[f]]
                                     h5.faceCell[int(cellFace[cellID,f]),1] = cellID
                             elif self.connectivity[f,0] == -2 or self.connectivity[f,0] == -1 or self.connectivity[f,0] == 0 or self.connectivity[f,0] == 1:
                                 # Add ghost cells- always ghost cell OUTSIDE
@@ -383,8 +420,7 @@ class cbablock:
         self.ghostID = ghostID
 
         
-
-class h5mesh:
+class h5_mesh:
     def __init__(self,ncell=0,nface=0):
         # H5 Attributes
         self.numFaces = nface
@@ -399,6 +435,7 @@ class h5mesh:
         self.nodeVertex = np.zeros((0,3))
 
     def load_zcfd(self,fname):
+        # Load zcfd h5 unstructured mesh
         f = h5py.File(fname,"r")
         g = f.get('mesh')
         
@@ -414,14 +451,22 @@ class h5mesh:
         self.faceType = np.array(g.get('faceType'))
         self.nodeVertex = np.array(g.get('nodeVertex'))
 
+        # faceIndex dataset
+        self.faceIndex = np.zeros(self.numFaces,dtype=int)
+        for i in range(self.numFaces-1):
+            self.faceIndex[i+1] = self.faceIndex[i] + self.faceType[i]
+        return
+            
+
     def writetec(self,fname):
+        # Convert zcfd mesh to tecplot visualisation format
+        # Write ZCFD mesh to tecplot FEPOLYHEDRON FORMAT
         n_v = np.size(self.nodeVertex[:,0])
         n_c = self.numCells
         n_f = self.numFaces
         n_fnodes = np.size(self.faceNodes)
 
         fout = open(fname,"w")
-
 
         print('Writing Header Information')
         fout.write("VARIABLES= \"X\" \"Y\" \"Z\"\n")
@@ -445,7 +490,6 @@ class h5mesh:
         fout.write('# k Vertex Locations \n')
         for i in range(n_v):
             fout.write("{} \n".format(self.nodeVertex[i,2]))
-
 
         print('Writing Face Info')
         fout.write('# Number of points per face \n')
@@ -475,6 +519,7 @@ class h5mesh:
         
 
     def writeh5(self,fname):
+        # Write unstructured data to h5 file
         f = h5py.File(fname,"w")
         h5mesh = f.create_group("mesh")
 
@@ -490,6 +535,38 @@ class h5mesh:
         h5mesh.create_dataset("faceNodes", data=self.faceNodes, shape=(self.numFaces*4,1))
         h5mesh.create_dataset("faceType", data=self.faceType, shape=(self.numFaces,1))
         h5mesh.create_dataset("nodeVertex", data=self.nodeVertex)
+        return
+
+    def extractSurfaceFaces(self,facetag):
+        # Extract unstructured surface faces
+        surFace = np.array(np.where(self.faceInfo[:,0]==facetag))[0,:]
+        
+        n_s = 0
+        for f in surFace:
+            n_s = n_s + int(self.faceType[f])
+        n_v = np.size(self.nodeVertex[:,0])
+
+        X_s = np.zeros((n_s,3))
+
+        ii = 0
+
+        for i in surFace:
+            n_points = int(self.faceType[i])
+            for j in range(n_points):
+                index = self.faceIndex[i] + j
+
+                X_s[ii,0] = self.nodeVertex[self.faceNodes[index],0]
+                X_s[ii,1] = self.nodeVertex[self.faceNodes[index],1]
+                X_s[ii,2] = self.nodeVertex[self.faceNodes[index],2]
+            
+                ii = ii + 1
+
+        # Assign datasets
+        self.n_s = n_s
+        self.n_v = n_v
+
+        self.X_s = X_s
+        self.X_v = self.nodeVertex
         return
     
 
@@ -530,9 +607,8 @@ class h5mesh:
 
 # mesh1.writeblk('combined.blk')
 
-# mesh = h5mesh()
-# mesh.load_zcfd('../data/combined.h5')
+mesh = h5_mesh()
+mesh.load_zcfd('../../data/3D/MDO/MDO_125K.h5')
+mesh.extractSurfaceFaces(4)
 # mesh.writetec('combined.plt')
 
-mesh = cba_mesh('MDO_125K.blk')
-mesh.show_connectivity()

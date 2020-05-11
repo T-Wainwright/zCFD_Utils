@@ -13,7 +13,7 @@ class mesh():
         self.n_v = 0
         self.aux = {}
 
-        self.data_path = '../data/'
+        self.data_path = '../../data/'
 
         self.load_mesh(self.data_path + fname)
     
@@ -52,7 +52,7 @@ class mesh():
         # Find surface points
         self.n_s = np.size(surfFace) * 4
         self.n_v = np.size(nodeVertex[:,0])
-        # print(n_s)
+        print(self.n_s)
 
         self.X_s = np.zeros([self.n_s,3])
         ii = 0
@@ -427,14 +427,14 @@ def c3(r):
 
 
 
-mesh = mesh('MDO_125K.h5')
-mesh.transfunc()
-mesh.writeLKEconf('out.conf',50,100)
-os.system('meshprep ../data/out.conf')
-mesh.writeLKEdef('def.xyz')
-os.system('meshdef ../data/volume.xyz.meshdef ../data/def.xyz output.xyz')
-mesh.update('output.xyz')
-mesh.write2tec('out.plt')
+mesh = mesh('3D/MDO/MDO_125K.h5')
+# mesh.transfunc()
+# mesh.writeLKEconf('out.conf',50,100)
+# os.system('meshprep ../data/out.conf')
+# mesh.writeLKEdef('def.xyz')
+# os.system('meshdef ../data/volume.xyz.meshdef ../data/def.xyz output.xyz')
+# mesh.update('output.xyz')
+# mesh.write2tec('out.plt')
 
 
 # fig = plt.figure()

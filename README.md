@@ -9,7 +9,6 @@ Utilities for working with zCFD Solver
   * Stitch together multible mesh blocks/ multiblock meshes
   * Extract surfaces for RBF mesh deformation
   * Convert single block CBA meshes into zcfd format
-* In progress:
-  * Convert multiblock CBA meshes to zcfd format
+  * Convert multiblock CBA meshes into zcfd format (in progress)
 * CBAmeshconverter
   * Convert multiblock CBA meshes to zcfd format (operation intensive)

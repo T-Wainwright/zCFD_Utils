@@ -1,6 +1,9 @@
 import numpy as np 
 import h5py
 import sys
+import os
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 """ 
 Utilities for handling CBA and ZCFD meshes
@@ -40,16 +43,18 @@ class cba_mesh:
     def __init__(self,fname='NONE',V=False):
         self.n_blocks = 0               # Number of blocks
         self.npts = 0                   # Number of points total in the mesh
-        self.block = {}                 # Number of points per block
-        self.data_path = '../../data/'     # Path to data
-        self.nface = 0
-        self.ncell = 0
+        self.nface = 0                  # Number of faces
+        self.ncell = 0                  # Number of cells
+        self.f_com = 0                  # Number of common faces
 
-        self.Common_faces = {}
+        self.data_path = '../../data/'  # Path to data
 
-        self.f_com = 0
+        self.V = V                      # Verbosity logical flag
 
-        self.V = V
+        self.block = {}                 # Dictionary of blocks
+        self.Common_faces = {}          # Dictionary of common faces
+       
+        
         
         if fname != 'NONE':
             fname = self.data_path + fname
@@ -101,13 +106,13 @@ class cba_mesh:
 
         # Cycle through common faces, ensuring there is only 1 entry per pair
         for i in range(self.f_com):
-            # Case 1- common faces are from same block- 'Wrap around'
+            # Case 1- common faces are from same block- 'Wrap around' - Omesh
             if self.Common_faces[i]['block1'] == self.Common_faces[i]['block2']:
                 print('wrap')
                 # Pair up faces to be wrapped in ascending order
                 if self.Common_faces[i]['face1'] > self.Common_faces[i]['face2']:
                     del self.Common_faces[i] 
-            # Case 2- common faces are from different blocks- stitch
+            # Case 2- common faces are from different blocks- stitch - Standard MB mesh
             else:
                 print('stitch')
                 if self.Common_faces[i]['block1'] > self.Common_faces[i]['block2']:
@@ -195,22 +200,22 @@ class cba_mesh:
 class cba_block:
     def __init__(self):
         # Integers
-        self.blockID = 0
-        self.npts = 0
-        self.npts_i = 0
-        self.npts_j = 0
-        self.npts_k = 0
+        self.blockID = 0                # Block Number
+        self.npts = 0                   # Number of points in block
+        self.npts_i = 0                 # Number of points in i direction
+        self.npts_j = 0                 # Number of points in j direction
+        self.npts_k = 0                 # Number of points in k direction
 
-        self.nface = 0
-        self.nface_i = 0
-        self.nface_j = 0
-        self.nface_k = 0
+        self.nface = 0                  # Number of faces
+        self.nface_i = 0                # Number of i plane faces
+        self.nface_j = 0                # Number of j plane faces
+        self.nface_k = 0                # Number of k plane faces
 
-        self.ncell = 0
+        self.ncell = 0                  # Number of cells
 
         # Arrays
-        self.X = np.array((0,3))
-        self.falsefaces = []
+        self.X = np.array((0,3))        # Coordinate points
+        self.falsefaces = []            
         self.falsefaces_log = [False,False,False,False,False,False]
 
         # Dictionaries
@@ -300,7 +305,7 @@ class cba_block:
             self.cell_bounds[n] = []
         self.BC_condition = [0,self.npts_i-1,0,self.npts_j-1,0,self.npts_k-1]
         
-        # Check for intenal / periodc faces. Keep a record of these faces, along with adjoining blocks
+        # Check for intenal / periodic faces. Keep a record of these faces, along with adjoining blocks
         false_faces_i = 0
         false_faces_j = 0
         false_faces_k = 0
@@ -424,6 +429,22 @@ class cba_block:
         h5.nodeVertex = np.append(h5.nodeVertex,self.X,axis=0)
         self.ghostID = ghostID
 
+    # def resolve_orientation(self,block1,face1,block2,face2):
+    #     # Extract driving face origin
+
+    #     if face1==0 or face1==1:                        # i face
+    #         npts_1_1 = cba_mesh.block[block1].npts_j
+    #         npts_1_2 = cba_mesh.block[block1].npts_k
+    #     elif: face1==2 or face1==3:                     # j face
+    #         npts_1_1 = cba_mesh.block[block1].npts_i
+    #         npts_1_2 = cba_mesh.block[block1].npts_k
+    #     elif: face1==4 or face1==5:                     # k face
+    #         npts_1_1 = cba_mesh.block[block1].npts_i
+    #         npts_1_2 = cba_mesh.block[block1].npts_j
+        
+    #     X_1_1 = cba_mesh.block[block1].X[0,:]
+        
+
         
 class h5_mesh:
     def __init__(self,ncell=0,nface=0):
@@ -439,8 +460,10 @@ class h5_mesh:
         self.faceType = np.ones(nface)*4
         self.nodeVertex = np.zeros((0,3))
 
-    def load_zcfd(self,fname):
+    def load_zcfd(self,fname,V=True):
         # Load zcfd h5 unstructured mesh
+        if V:
+            print('Loading zCFD mesh: {}'.format(fname))
         f = h5py.File(fname,"r")
         g = f.get('mesh')
         
@@ -460,32 +483,40 @@ class h5_mesh:
         self.faceIndex = np.zeros(self.numFaces,dtype=int)
         for i in range(self.numFaces-1):
             self.faceIndex[i+1] = self.faceIndex[i] + self.faceType[i]
+
+        if V:
+            print('zCFD mesh successfully loaded ')
+            print('nCells= {} \t nFaces= {}'.format(self.numCells,self.numFaces))
+
         return
+
             
 
-    def writetec(self,fname):
-        # Convert zcfd mesh to tecplot visualisation format
+    def writetec(self,fname,V=True):
         # Write ZCFD mesh to tecplot FEPOLYHEDRON FORMAT
+        if V:
+            print('Writing tecplot mesh file: {}'.format(fname))
         n_v = np.size(self.nodeVertex[:,0])
         n_c = self.numCells
         n_f = self.numFaces
         n_fnodes = np.size(self.faceNodes)
 
         fout = open(fname,"w")
-
-        print('Writing Header Information')
+        if V:
+            print('Writing Header Information')
         fout.write("VARIABLES= \"X\" \"Y\" \"Z\"\n")
         fout.write("ZONE \n")
-        fout.write("NODES = {} \n".format(n_v))
-        fout.write("FACES = {} \n".format(n_f))
-        fout.write("TOTALNUMFACENODES = {} \n".format(n_fnodes))
-        fout.write("NUMCONNECTEDBOUNDARYFACES = 0 \n")
-        fout.write("TOTALNUMBOUNDARYCONNECTIONS = 0 \n")
-        fout.write("ELEMENTS = {} \n".format(n_c))
-        fout.write("DATAPACKING = BLOCK \n")
-        fout.write("ZONETYPE = FEPOLYHEDRON \n")
+        fout.write("NODES = {} \n".format(n_v))                     # Number of Nodes
+        fout.write("FACES = {} \n".format(n_f))                     # Number of faces
+        fout.write("TOTALNUMFACENODES = {} \n".format(n_fnodes))    # Number of nodes in faces
+        fout.write("NUMCONNECTEDBOUNDARYFACES = 0 \n")              # Number of connected boundary faces (0)
+        fout.write("TOTALNUMBOUNDARYCONNECTIONS = 0 \n")            # Number of connected zones (0)
+        fout.write("ELEMENTS = {} \n".format(n_c))                  # Number of cells
+        fout.write("DATAPACKING = BLOCK \n")                        # Data formatting- must be block for FEPOLYHEDRON
+        fout.write("ZONETYPE = FEPOLYHEDRON \n")                    # Mesh type- FE polyhedron for zCFD
 
-        print('Writing Node Vertex Points')
+        if V:
+            print('Writing Node Vertex Points')
         fout.write('# i Vertex Locations \n')
         for i in range(n_v):
             fout.write("{} \n".format(self.nodeVertex[i,0]))
@@ -496,14 +527,15 @@ class h5_mesh:
         for i in range(n_v):
             fout.write("{} \n".format(self.nodeVertex[i,2]))
 
-        print('Writing Face Info')
+        if V:
+            print('Writing Face Info')
         fout.write('# Number of points per face \n')
         for i in range(n_f):
             fout.write("{} \n".format(self.faceType[i,0]))
 
-
-        print('Writing Face Nodes')
-        fout.write('# Nodes for each face \n')
+        if V:
+            print('Writing Face Nodes')
+        fout.write('# Nodes making up each face \n')
         for i in range(n_f):
             n_points = int(self.faceType[i,0])
             for j in range(n_points):
@@ -511,7 +543,8 @@ class h5_mesh:
                 fout.write("{} ".format(self.faceNodes[index,0]+1))
             fout.write("\n")
 
-        print('Writing Face Cell Interfaces')
+        if V:
+            print('Writing Face Cell Interfaces')
         fout.write('# Left Cells \n')
         for i in range(n_f):
             fout.write("{} \n".format(self.faceCell[i,0]+1))
@@ -522,9 +555,14 @@ class h5_mesh:
             elif self.faceCell[i,1] >= n_c:
                 fout.write("0 \n")
         
+        if V:
+            print('tecplot file written successfully')
+        
 
-    def writeh5(self,fname):
+    def writeh5(self,fname,V=True):
         # Write unstructured data to h5 file
+        if V:
+            print('Writing h5 mesh file: {}'.format(fname))
         f = h5py.File(fname,"w")
         h5mesh = f.create_group("mesh")
 
@@ -540,10 +578,15 @@ class h5_mesh:
         h5mesh.create_dataset("faceNodes", data=self.faceNodes, shape=(self.numFaces*4,1))
         h5mesh.create_dataset("faceType", data=self.faceType, shape=(self.numFaces,1))
         h5mesh.create_dataset("nodeVertex", data=self.nodeVertex)
+
+        if V:
+            print('h5 file written successfully')
         return
 
-    def extractSurfaceFaces(self,facetag):
+    def extractSurfaceFaces(self,facetag, V=True):
         # Extract unstructured surface faces
+        if V:
+            print('Extracting faces with tag: {}'.format(facetag))
         surFace = np.array(np.where(self.faceInfo[:,0]==facetag))[0,:]
         
         n_s = 0
@@ -552,7 +595,7 @@ class h5_mesh:
         n_v = np.size(self.nodeVertex[:,0])
 
         X_s = np.zeros((n_s,3))
-
+        
         ii = 0
 
         for i in surFace:
@@ -572,48 +615,56 @@ class h5_mesh:
 
         self.X_s = X_s
         self.X_v = self.nodeVertex
+
+        if V:
+            print('faces successfully extracted')
         return
-    
 
-# # Load meshes
-# mesh1 = cba_mesh('../../FLOWSOLVER2018/Caradonna_Tung/CT8_125K.blk',V=True)
-# mesh2 = cba_mesh('../../FLOWSOLVER2018/Caradonna_Tung/CT8_125K.blk',V=True)
+    def extractHaloFaces(self):
 
-# # Bump mesh2 5D downstream
-# for i in mesh2.block:
-#     for j in range(mesh2.block[i].npts):
-#         mesh2.block[i].X[j,2] = mesh2.block[i].X[j,2] - (mesh1.block[14].X[-1,2] - mesh1.block[0].X[0,2])
+        # Count number of halo cells in the mesh
+        max_cell_ID = max(self.faceCell[:,1])
+        num_halo_cells = max_cell_ID - self.numCells
+        print('num_Halo_cells= {}'.format(num_halo_cells))
 
-# # Change boundary conditions for bottom faces
-# for i in range(0,4):
-#     mesh1.block[i].connectivity[5,0] = 2
-#     mesh1.block[i].connectivity[5,1] = 36 + 14 + i
-#     mesh1.block[i].connectivity[5,2] = 5
+        # Count the number of faces requiring a halo cell
+        num_internal_faces = np.count_nonzero(self.faceBC==0)
+        num_halo_faces = self.numFaces - num_internal_faces
+        print('num_halo_faces= {}'.format(num_halo_faces))
 
-# for i in range(18,22):
-#     mesh1.block[i].connectivity[5,0] = 2
-#     mesh1.block[i].connectivity[5,1] = 36 + 32 + i
-#     mesh1.block[i].connectivity[5,2] = 5
+    def writeLKEconf(self,fname,r0,nbase,V=True):
+        # Output .conf files for LKE mesh deformation program
+        if V:
+            print('Writing LKE mesh deformation config files')
+        volfile = 'volume'
+        surfile = 'surface'
+        dformat = 'xyz'
 
-# for i in range(14,18):
-#     mesh2.block[i].connectivity[5,0] = 2
-#     mesh2.block[i].connectivity[5,1] = i - 14
-#     mesh2.block[i].connectivity[5,2] = 5
+        fout = open(fname,"w")
+        fout.write("voltype = {} \n".format(dformat))
+        fout.write("mesh = {} \n".format(volfile + '.' + dformat))
+        fout.write("surfpts = {} \n".format(surfile + '.' + dformat))
+        fout.write("rbfmode = 1 \n")
+        fout.write("r0 = {} \n".format(r0))
+        fout.write("nbase = {}".format(nbase))
 
-# for i in range(32,36):
-#     mesh2.block[i].connectivity[5,0] = 2
-#     mesh2.block[i].connectivity[5,1] = i - 14
-#     mesh2.block[i].connectivity[5,2] = 5
+        fout.close()
 
-# mesh1.n_blocks = mesh1.n_blocks*2
+        fvol = open(volfile + '.' + dformat,"w")
+        fvol.write("{} \n".format(self.n_v))
+        for i in range(self.n_v):
+            fvol.write("{:.12f} \t {:.12f} \t {:.12f} \n".format(self.X_v[i,0],self.X_v[i,1],self.X_v[i,2]))
+        fvol.close()
 
-# for i in mesh2.block:
-#     mesh1.block[i+36] = mesh2.block[i]
+        fsur = open(surfile + '.' + dformat,"w")
+        fsur.write("{} \n".format(self.n_s))
+        for i in range(self.n_s):
+            fsur.write("{:.12f} \t {:.12f} \t {:.12f} \n".format(self.X_s[i,0],self.X_s[i,1],self.X_s[i,2]))
 
-# mesh1.writeblk('combined.blk')
+        if V:
+            print('LKE config files written successfully')
+        return
+
 
 mesh = h5_mesh()
-mesh.load_zcfd('../../data/3D/MDO/MDO_125K.h5')
-mesh.extractSurfaceFaces(4)
-# mesh.writetec('combined.plt')
-
+mesh.load_zcfd('../../data/3D/IEA_15MW/IEA_15MW_500K.h5')

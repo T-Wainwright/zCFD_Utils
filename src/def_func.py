@@ -13,7 +13,7 @@ class mesh():
         self.n_v = 0
         self.aux = {}
 
-        self.data_path = '../../data/'
+        self.data_path = '../../data/3D/CT_rotor/'
 
         self.load_mesh(self.data_path + fname)
     
@@ -233,6 +233,7 @@ class mesh():
     # Visualisation Stuff
 
     def write2tec(self,filename):
+        print('Writing tecplot output')
         filename = self.data_path + filename
         # Examine file extension
         if self.aux['ext'] == 'blk':
@@ -252,6 +253,7 @@ class mesh():
         return
 
     def h52tec(self,filename):
+        print('Writing h5 to tecplot')
         # Write CBA file to tec
         f = h5py.File(self.aux['fname'],"r")
         g = f.get('mesh')
@@ -327,21 +329,25 @@ class mesh():
         u_y = np.zeros(self.n_s)
         u_z = np.zeros(self.n_s)
 
-        t = np.deg2rad(-10)
+        t = np.deg2rad(0)
         
-        for i in range(self.n_s):
-            u_x_tr = 0
-            u_y_tr = 0
-            u_z_tr = 5
+        # for i in range(self.n_s):
+        #     u_x_tr = 0
+        #     u_y_tr = 0
+        #     u_z_tr = 5
 
-            u_x_rot = (np.cos(t)*self.X_s[i,0] - np.sin(t)*self.X_s[i,2]) - self.X_s[i,0]
-            u_z_rot = (np.sin(t)*self.X_s[i,0] + np.cos(t)*self.X_s[i,2]) - self.X_s[i,2]
+        #     u_x_rot = (np.cos(t)*self.X_s[i,0] - np.sin(t)*self.X_s[i,2]) - self.X_s[i,0]
+        #     u_z_rot = (np.sin(t)*self.X_s[i,0] + np.cos(t)*self.X_s[i,2]) - self.X_s[i,2]
 
-            u_x[i] = u_x_tr + u_x_rot
-            u_y[i] = u_y_tr
-            u_z[i] = u_z_tr + u_z_rot
+        #     u_x[i] = u_x_tr + u_x_rot
+        #     u_y[i] = u_y_tr
+        #     u_z[i] = u_z_tr + u_z_rot
         
         self.u_s = np.zeros_like(self.X_s)
+
+        for i in range(self.n_s):
+            # u_z[i] = 0.25 * self.X_s[i,1]**2
+            u_z[i] = (0.02 / 24) * self.X_s[i,1]**2
 
         self.u_s[:,0] = u_x
         self.u_s[:,1] = u_y
@@ -367,6 +373,7 @@ class mesh():
         return
 
     def writeLKEconf(self,fname,r0,nbase):
+        print('Writing LKE config file')
         volfile = 'volume'
         surfile = 'surface'
         dformat = 'xyz'
@@ -399,6 +406,7 @@ class mesh():
         return
     
     def writeLKEdef(self,fname):
+        print('Writing LKE deformation file')
         fname = self.data_path + fname
         self.transfunc()
         fdef = open(fname,"w")
@@ -427,14 +435,15 @@ def c3(r):
 
 
 
-mesh = mesh('3D/MDO/MDO_125K.h5')
-# mesh.transfunc()
-# mesh.writeLKEconf('out.conf',50,100)
-# os.system('meshprep ../data/out.conf')
-# mesh.writeLKEdef('def.xyz')
-# os.system('meshdef ../data/volume.xyz.meshdef ../data/def.xyz output.xyz')
-# mesh.update('output.xyz')
-# mesh.write2tec('out.plt')
+mesh = mesh('CT0_500K.h5')
+mesh.transfunc()
+mesh.writeLKEconf('out.conf',100,200)
+os.system('meshprep ../../data/out.conf')
+mesh.writeLKEdef('def.xyz')
+os.system('meshdef ../../data/volume.xyz.meshdef ../../data/def.xyz output.xyz')
+mesh.update('output.xyz')
+mesh.write2tec('deformed.plt')
+print('finished')
 
 
 # fig = plt.figure()

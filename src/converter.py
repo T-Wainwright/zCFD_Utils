@@ -1,7 +1,42 @@
 import numpy as np
 
+""" 
+Converter for CBA mesh to zCFD h5 format 
+
+Tom Wainwright
+
+University of Bristol 2020
+tom.wainwright@bristol.ac.uk
+
+Classes:
+- CBA_mesh
+    -load_cba(fname,V)
+    -solve_faces()
+    -structure_data()
+    -get_common_faces()
+    -check_face_allignment(V)
+    -convert_h5_data(V)
+    -check_unassigned_faces(V)
+    -check_unassigned_faceNodes(V)
+    -writetec(fname)
+
+- CBA_block
+    -order_points()
+    -get_corners()
+    -get_face_corners(face)
+    -get_nfaces()
+    -assign_primary_faces(cell_offset,face_offset)
+    -get_boundface_ID(a,b,f)
+    -assign_boundface(a,b,f,face_ID)
+    -translate_BC()
+    -get_faceNodes(i,j,k,p)
+    
+    """
+
+
+
 class CBA_mesh():
-    def __init__(self):
+    def __init__(self,fname='NONE',V=False):
         # Define properties of CBA mesh
 
         # Integers
@@ -11,6 +46,10 @@ class CBA_mesh():
 
         # dictionaries
         self.block = {}
+
+        # If mesh handle is provided, load mesh
+        if fname != 'NONE':
+            self.load_cba(fname,V)
 
     def load_cba(self,fname,V=False):
         # Load CBA mesh
@@ -57,6 +96,23 @@ class CBA_mesh():
         
         if V:
             print(self.ncell)
+
+        self.structure_data()
+        self.get_common_faces()
+        self.solve_faces()
+        
+    
+    def solve_faces(self):
+        self.nface = 0
+        for b in range(self.nblocks):
+            self.block[b].get_nfaces()
+            self.nface = self.nface + self.block[b].nface
+
+    def structure_data(self):
+        # Process data into a slightly more useful format
+        for b in range(self.nblocks):
+            self.block[b].order_points()
+            self.block[b].translate_BC()
     
     def get_common_faces(self):
         # Extract dictionary of common faces within multiblock mesh
@@ -115,13 +171,6 @@ class CBA_mesh():
 
         self.n_commonface = n_driving
 
-
-    def structure_data(self):
-        # Process data into a slightly more useful format
-        for b in range(self.nblocks):
-            self.block[b].order_points()
-            self.block[b].translate_BC()
-    
     def check_face_allignment(self,V=False):
         problem_axis = 0
         for f in range(self.n_commonface):              
@@ -179,16 +228,12 @@ class CBA_mesh():
             print('yarrr we be avin a problem')
             print(problem_axis)
         
-    def solve_faces(self):
-        self.nface = 0
-        for b in range(self.nblocks):
-            mesh.block[b].get_nfaces()
-            self.nface = self.nface + mesh.block[b].nface
-        
-
     def convert_h5_data(self,V=False):
         cell_ID = 0
         face_ID = 0
+
+        self.check_face_allignment(V)
+
         for b in range(self.nblocks):
             (cell_ID, face_ID) = mesh.block[b].assign_primary_faces(cell_ID,face_ID)
         if V:
@@ -291,8 +336,6 @@ class CBA_mesh():
 
         # assign faceType
         self.faceType = np.ones(self.nface) * 4
-
-
             
     def check_unassigned_faces(self,V=False):
         if V:
@@ -575,11 +618,8 @@ class CBA_block():
 
                         self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)
 
-                
-
-
-
                     cell_ID = cell_ID + 1
+
         if face_ID != self.nface:
             print('Mismatch in face numbers: {} assigned, {} expected'.format(face_ID,self.nface))
             print('Difference of {}'.format(self.nface - face_ID))
@@ -647,6 +687,7 @@ class CBA_block():
         # 13 = Accoustic wall source
 
         BC_dict = {-1:3, 0:3, 1:9, 2:0, 3:12, 4:12}
+        FZ_dict = {}
         for f in range(6):
             self.connectivity[f]['BC_translated'] = BC_dict[self.connectivity[f]['type']]
 
@@ -685,25 +726,6 @@ class CBA_block():
         return [nv1,nv2,nv3,nv4]
 
         
-                    
-
-mesh = CBA_mesh()
-# mesh.load_cba('../../data/3D/IEA_15MW/IEA_15MW_500K.blk')
-mesh.load_cba('../../data/3D/CT_rotor/CT8_1M.blk')
-# mesh.load_cba('../../data/2D/2D_test/Omesh.blk')
-# mesh.load_cba('../../data/3D/3D_test/SB.blk')
-mesh.structure_data()
-mesh.get_common_faces()
-mesh.check_face_allignment(V=False)
-mesh.solve_faces()
+mesh = CBA_mesh(fname='../../data/3D/CT_rotor/CT0_250K.blk')
 mesh.convert_h5_data(V=True)
-mesh.writetec('test.plt')
-
-print(mesh.nodeVertex.shape)
-print(mesh.npts)
-print(mesh.faceCell[-10:,:])
-# print(mesh.faceCell[0:10,:])
-
-# print(mesh.block[0].nface)
-
 

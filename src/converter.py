@@ -1,4 +1,5 @@
 import numpy as np
+import h5py
 
 """ 
 Converter for CBA mesh to zCFD h5 format 
@@ -72,18 +73,13 @@ class CBA_mesh():
             self.block[b].nptsj = int(data[line_index,1])
             self.block[b].nptsk = int(data[line_index,2])
 
-            self.block[b].npts = self.block[b].nptsi * self.block[b].nptsj * self.block[b].nptsk
-            
-            self.block[b].ncell = (self.block[b].nptsi - 1) * (self.block[b].nptsj - 1) * (self.block[b].nptsk - 1)
-            
-            self.ncell = self.ncell + self.block[b].ncell
-            self.npts = self.npts + self.block[b].npts
+            self.block[b].npts = self.block[b].nptsi * self.block[b].nptsj * self.block[b].nptsk      
             
             line_index = line_index + 1
 
             # Load body information
             self.block[b].X = data[line_index:line_index + self.block[b].npts,:]
-
+            
             line_index = line_index + self.block[b].npts
 
             # Load footer information
@@ -93,7 +89,18 @@ class CBA_mesh():
                 self.block[b].connectivity[i]['neighbour']=int(data[line_index,1])
                 self.block[b].connectivity[i]['orientation']=int(data[line_index,2])
                 line_index = line_index + 1
-        
+
+            if self.block[b].nptsk == 1:
+                # 2D mesh
+                self.block[b].nptsk = 2
+                self.block[b].X = np.concatenate((self.block[b].X,self.block[b].X))
+                self.block[b].X[self.block[b].npts:,1] = 1
+                self.block[b].npts = self.block[b].nptsi * self.block[b].nptsj * self.block[b].nptsk      
+            
+            self.block[b].ncell = (self.block[b].nptsi - 1) * (self.block[b].nptsj - 1) * (self.block[b].nptsk - 1)
+            self.ncell = self.ncell + self.block[b].ncell
+            self.npts = self.npts + self.block[b].npts
+
         if V:
             print(self.ncell)
 
@@ -200,6 +207,8 @@ class CBA_mesh():
             face1_axes = {'ax1': ax1, 'bx1':bx1}
             face2_axes = {'ax2': ax2, 'bx2':bx2, 'cx2':cx2, 'dx2':dx2}
 
+            print(face1_axes)
+
             axis_colinear = 0
             axis_reversed = 0
 
@@ -234,10 +243,13 @@ class CBA_mesh():
 
         self.check_face_allignment(V)
 
+        # Solve primary faces within blocks
         for b in range(self.nblocks):
             (cell_ID, face_ID) = mesh.block[b].assign_primary_faces(cell_ID,face_ID)
         if V:
             print('Cells assigned: {} \t Faces assigned: {}'.format(cell_ID,face_ID))
+
+        # Solve block boundaries
         for f in self.common_faces:
             # Get number of points to index through
             block1 = self.common_faces[f]['block1']
@@ -276,57 +288,74 @@ class CBA_mesh():
         
         self.check_unassigned_faces(V)
 
-        self.faceCell = np.ones([self.nface,2])
-        self.faceCell = self.faceCell * -100
+        self.faceCell = np.ones([self.nface,2], dtype=int) * -100
+        self.cellFace = np.ones([self.ncell * 6],dtype=int) * -100
 
+        # assign faceCell dataset
         for b in range(self.nblocks):
             for i in range(self.block[b].nptsi - 1):
                 for j in range(self.block[b].nptsj - 1):
                     for k in range(self.block[b].nptsk - 1):
                         for f in range(6):
-                            if self.faceCell[self.block[b].cell_face[i][j][k][f],0] < 0:
-                                self.faceCell[self.block[b].cell_face[i][j][k][f],0] = self.block[b].cell_face[i][j][k]['cell_ID']
+                            face_ID = self.block[b].cell_face[i][j][k][f]
+                            cell_ID = self.block[b].cell_face[i][j][k]['cell_ID']
+
+                            if self.faceCell[face_ID,0] < 0:
+                                self.faceCell[face_ID,0] = cell_ID
                             else:
-                                self.faceCell[self.block[b].cell_face[i][j][k][f],1] = self.block[b].cell_face[i][j][k]['cell_ID']
+                                self.faceCell[face_ID,1] = cell_ID
+
+                            self.cellFace[(cell_ID * 6) + f] = face_ID
+
+        self.check_unassigned_cellFace(V)
+                            
+        # assign halo cells
 
         nhalo = 0
 
-        # assign halo cells
         for f in range(self.nface):
             if self.faceCell[f,1] < 0:
                 self.faceCell[f,1] = self.ncell + nhalo
-                nhalo = nhalo + 1
-        
+                nhalo = nhalo + 1        
         if V:
             print('Halo cells assigned: {}'.format(nhalo))
 
-        self.faceBC = np.zeros([self.nface])
+        # assign boundary conditions
+
+        self.faceBC = np.ones([self.nface],dtype=int) * -100
+        
         nhalo_face = 0
 
-        # assign boundary conditions
         for b in range(self.nblocks):
             for f in self.block[b].face_BC:
                 self.faceBC[f] = self.block[b].face_BC[f]
                 if self.block[b].face_BC[f] != 0:
                     nhalo_face = nhalo_face + 1
-
         if V:
             print('Halo faces expected: {}'.format(nhalo_face))
 
-        self.faceNodes = np.ones([(self.nface+1)*4]) * -100
-        
+        self.check_unassigned_faceBC(V)
+
+        # assign faceInfo dataset
+        self.faceInfo = np.zeros([self.nface,2],dtype=int)
+
+        for b in range(self.nblocks):
+            for f in self.block[b].face_info:
+                self.faceInfo[f,0] = self.block[b].face_info[f]
+
         # assign face nodes
+        self.faceNodes = np.ones([(self.nface)*4],dtype=int) * -100
+
         point_offset = 0
 
         for b in range(self.nblocks):
             for f in self.block[b].face_nodes:
                 for p in range(4):
-                    self.faceNodes[f*4 + p] = self.block[b].face_nodes[f][p] + point_offset
-            
+                    self.faceNodes[f*4 + p] = int(self.block[b].face_nodes[f][p] + point_offset)
             point_offset = point_offset + self.block[b].npts
-        
-        self.check_unassigned_faceNodes(V)
 
+        self.check_unassigned_faceNodes(V)
+        
         # create nodeVertex dataset
         for b in range(self.nblocks):
             if b == 0:
@@ -335,7 +364,11 @@ class CBA_mesh():
                 self.nodeVertex = np.concatenate((self.nodeVertex,self.block[b].X))
 
         # assign faceType
-        self.faceType = np.ones(self.nface) * 4
+        self.faceType = np.zeros([self.nface,2],dtype=int)
+        for f in range(self.nface):
+            self.faceType[f,0] = 4
+        
+        self.remove_common_nodes(V)
             
     def check_unassigned_faces(self,V=False):
         if V:
@@ -357,21 +390,89 @@ class CBA_mesh():
         unassigned_faceNodes = 0
         for f in self.faceNodes:
             if f < 0:
-                unassigned_faceNodes = unassigned_faceNodes + 1
-            
+                unassigned_faceNodes = unassigned_faceNodes + 1            
         if V:
             print('{} faceNodes unassigned'.format(unassigned_faceNodes))
-            print('')
+
+    def check_unassigned_faceBC(self,V=False):
+        if V:
+            print('Checking for unassigned faceBC...')
+        unassigned_faceBC = 0
+        for f in self.faceBC:
+            if f < 0:
+                unassigned_faceBC = unassigned_faceBC + 1            
+        if V:
+            print('{} faceBC unassigned'.format(unassigned_faceBC))
+ 
+    def check_unassigned_cellFace(self,V=False):
+        if V:
+            print('Checking for unassigned cellFaces')
+        unassigned_cellFace = 0
+        for f in self.cellFace:
+            if f < 0:
+                unassigned_cellFace = unassigned_cellFace + 1
+        if V: 
+            print('{} cellFaces unassigned'.format(unassigned_cellFace))
+
+    def check_cell_references(self,V=False):
+        if V:
+            print('Checking cell references')
+        cell_references = np.zeros(self.ncell,dtype=int)
+        for f in range(self.nface):
+            cell_references[self.faceCell[f,0]] = cell_references[self.faceCell[f,0]] + 1
+            if self.faceCell[f,1] < self.ncell:
+                cell_references[self.faceCell[f,1]] = cell_references[self.faceCell[f,1]] + 1
+
+    def remove_common_nodes(self,V=False):
+        if V:
+            print('Removing common nodes')
+
+        node_references = np.zeros_like(self.nodeVertex[:,0])
+        presort_nodes = len(self.nodeVertex[:,0])
+
+        for fn in self.faceNodes:
+            node_references[fn] = node_references[fn] + 1
+
+        unique, counts = np.unique(node_references, return_counts=True)
+
+        if V:
+            print('Number of node references (pre-sort)')
+            print(dict(zip(unique, counts)))
+
+        unique, indices = np.unique(self.nodeVertex, axis = 0, return_inverse=True)
+                
+        faceNodes_sorted = np.zeros_like(self.faceNodes)
+
+        for fn in range(len(self.faceNodes)):
+            faceNodes_sorted[fn] = indices[self.faceNodes[fn]]
+
+        self.faceNodes_sorted = faceNodes_sorted
+        self.nodeVertex_sorted = unique
+        postsort_nodes = len(self.nodeVertex_sorted[:,0])
+
+        node_references = np.zeros_like(self.nodeVertex_sorted[:,0])
+
+        for fn in self.faceNodes_sorted:
+            node_references[fn] = node_references[fn] + 1
+
+        unique, counts = np.unique(node_references, return_counts=True)
+        if V:
+            print('Number of node references (post-sort)')
+            print(dict(zip(unique, counts)))
+
+            print('{} Common nodes removed'.format(presort_nodes - postsort_nodes))
+        
+
+
 
     def writetec(self,fname,V=True):
         # Write ZCFD mesh to tecplot FEPOLYHEDRON FORMAT
         if V:
             print('Writing tecplot mesh file: {}'.format(fname))
-        n_v = np.size(self.nodeVertex[:,0])
+        n_v = np.size(self.nodeVertex_sorted[:,0])
         n_c = self.ncell
         n_f = self.nface
-        print(n_v,n_c,n_f)
-        n_fnodes = np.size(self.faceNodes) - 4
+        n_fnodes = np.size(self.faceNodes_sorted) 
 
         fout = open(fname,"w")
         if V:
@@ -391,28 +492,28 @@ class CBA_mesh():
             print('Writing Node Vertex Points')
         fout.write('# i Vertex Locations \n')
         for i in range(n_v):
-            fout.write("{} \n".format(self.nodeVertex[i,0]))
+            fout.write("{} \n".format(self.nodeVertex_sorted[i,0]))
         fout.write('# j Vertex Locations \n')
         for i in range(n_v):
-            fout.write("{} \n".format(self.nodeVertex[i,1]))
+            fout.write("{} \n".format(self.nodeVertex_sorted[i,1]))
         fout.write('# k Vertex Locations \n')
         for i in range(n_v):
-            fout.write("{} \n".format(self.nodeVertex[i,2]))
+            fout.write("{} \n".format(self.nodeVertex_sorted[i,2]))
 
         if V:
             print('Writing Face Info')
         fout.write('# Number of points per face \n')
         for i in range(n_f):
-            fout.write("{} \n".format(self.faceType[i]))
+            fout.write("{} \n".format(self.faceType[i,0]))
 
         if V:
             print('Writing Face Nodes')
         fout.write('# Nodes making up each face \n')
         for i in range(n_f):
-            n_points = int(self.faceType[i])
+            n_points = int(self.faceType[i,0])
             for j in range(n_points):
                 index = i * n_points + j
-                fout.write("{} ".format(self.faceNodes[index]+1))
+                fout.write("{} ".format(self.faceNodes_sorted[index]+1))
             fout.write("\n")
 
         if V:
@@ -430,8 +531,21 @@ class CBA_mesh():
         if V:
             print('tecplot file written successfully')
 
+    def write_h5(self,fname):
+        f = h5py.File(fname,"w")
+        h5mesh = f.create_group("mesh")
 
-        
+        h5mesh.attrs.create("numFaces",self.nface, shape=(1,1))
+        h5mesh.attrs.create("numCells",self.ncell, shape=(1,1,))
+
+        h5mesh.create_dataset("cellFace", data=self.cellFace)
+        h5mesh.create_dataset("faceBC", data=self.faceBC, shape=(self.nface,1))
+        h5mesh.create_dataset("faceCell", data=self.faceCell)
+        h5mesh.create_dataset("faceInfo", data=self.faceInfo)
+        h5mesh.create_dataset("faceNodes", data=self.faceNodes, shape=(self.nface * 4,1))
+        h5mesh.create_dataset("faceType", data=self.faceType[:,0], shape=(self.nface,1))
+        h5mesh.create_dataset("nodeVertex", data=self.nodeVertex)
+
 
 class CBA_block():
     def __init__(self):
@@ -549,6 +663,7 @@ class CBA_block():
         self.cell_face = {}                       # Faces on each cell
         self.face_BC = {}
         self.face_nodes = {}
+        self.face_info = {}
 
         cell_ID = 0
         face_ID = 0
@@ -590,6 +705,7 @@ class CBA_block():
                                 else:
                                     self.cell_face[i][j][k][p] = face_ID + face_offset
                                     self.face_BC[face_ID + face_offset] = 0    # Internal boundary face
+                                    self.face_info[face_ID + face_offset] = 0
                                     self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)
 
                                     face_ID = face_ID + 1
@@ -597,6 +713,7 @@ class CBA_block():
                             else:
                                 self.cell_face[i][j][k][p] = face_ID + face_offset
                                 self.face_BC[face_ID + face_offset] = self.connectivity[p]['BC_translated']
+                                self.face_info[face_ID + face_offset] = self.connectivity[p]['FT_translated']
                                 self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)
                                 
                                 face_ID = face_ID + 1
@@ -605,6 +722,7 @@ class CBA_block():
                         elif internal_conditions[p]:
                             self.cell_face[i][j][k][p] = face_ID + face_offset
                             self.face_BC[face_ID + face_offset] = 0
+                            self.face_info[face_ID + face_offset] = self.connectivity[p]['FT_translated']
                             self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)
                             
                             face_ID = face_ID + 1
@@ -615,8 +733,6 @@ class CBA_block():
                             self.cell_face[i][j][k][2] = self.cell_face[i][j-1][k][3]
                         elif p == 4:
                             self.cell_face[i][j][k][4] = self.cell_face[i][j][k-1][5]
-
-                        self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)
 
                     cell_ID = cell_ID + 1
 
@@ -668,6 +784,7 @@ class CBA_block():
 
     def translate_BC(self):
         # CBA format:
+        # -2 = 2D wall (symmetry)
         # -1 = Aerodynamic surface
         # 0 = wall
         # 1 = Farfield
@@ -686,10 +803,19 @@ class CBA_block():
         # 12 = Periodic
         # 13 = Accoustic wall source
 
-        BC_dict = {-1:3, 0:3, 1:9, 2:0, 3:12, 4:12}
-        FZ_dict = {}
+        # Fluid zones
+        # 0 = NONE
+        # 2 = Farfield
+        # 3 = Slip Wall
+        # 4 = Aerodynamic surface
+        # 5 = Periodic Downstream
+        # 6 = Periodic Upstream
+
+        BC_dict = {-2:7, -1:3, 0:3, 1:9, 2:0, 3:12, 4:12}
+        FT_dict = {-2:7, -1:4, 0:3, 1:2, 2:0, 3:5, 4:6}
         for f in range(6):
             self.connectivity[f]['BC_translated'] = BC_dict[self.connectivity[f]['type']]
+            self.connectivity[f]['FT_translated'] = FT_dict[self.connectivity[f]['type']]
 
     def get_faceNodes(self,i,j,k,p):
         if p == 0:
@@ -723,9 +849,17 @@ class CBA_block():
             nv3 = (i+1) + (j+1)*self.nptsi + (k+1)*self.nptsi*self.nptsj
             nv4 = i + (j+1)*self.nptsi + (k+1)*self.nptsi*self.nptsj
 
-        return [nv1,nv2,nv3,nv4]
+        return [nv4,nv3,nv2,nv1]
+
 
         
-mesh = CBA_mesh(fname='../../data/3D/CT_rotor/CT0_250K.blk')
+# mesh = CBA_mesh(fname='../../data/3D/IEA_15MW/IEA_15MW_500K.blk')
+# mesh = CBA_mesh(fname='../../data/3D/MDO/MDO_250K.blk')
+mesh = CBA_mesh(fname='../../data/2D/2D_test/Omesh.blk')
+# mesh = CBA_mesh('../../data/3D/CT_rotor/CT0_250K.blk')
 mesh.convert_h5_data(V=True)
+# mesh.write_h5('../../data/3D/MDO/MDO_250K.blk.h5')
+
+mesh.write_h5('../../data/2D/2D_test/Omesh.test.h5')
+mesh.writetec('test.plt')
 

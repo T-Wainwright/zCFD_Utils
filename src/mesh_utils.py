@@ -667,4 +667,5 @@ class h5_mesh:
 
 
 mesh = h5_mesh()
-mesh.load_zcfd('../../data/3D/IEA_15MW/IEA_15MW_500K.h5')
+mesh.load_zcfd('../../data/2D/2D_test/test.h5')
+print(np.max(mesh.cellFace))

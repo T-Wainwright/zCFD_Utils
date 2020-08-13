@@ -1,6 +1,12 @@
 # zCFD_Utils
 Utilities for working with zCFD Solver
 
+Tom Wainwright
+
+University of Bristol
+
+tom.wainwright@bristol.ac.uk
+
 ## Current modules:
 
 * mesh_utils:

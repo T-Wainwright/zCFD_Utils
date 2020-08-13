@@ -1,5 +1,6 @@
 import numpy as np
 import h5py
+import time
 
 """ 
 Converter for CBA mesh to zCFD h5 format 
@@ -9,17 +10,29 @@ Tom Wainwright
 University of Bristol 2020
 tom.wainwright@bristol.ac.uk
 
+To convert CBA mesh:
+
+mesh = CBA_mesh('path_To_blk_file')
+mesh.convert_h5_data()
+mesh.write_h5('path-to-h5-file')
+
 Classes:
 - CBA_mesh
     -load_cba(fname,V)
-    -solve_faces()
     -structure_data()
     -get_common_faces()
-    -check_face_allignment(V)
-    -convert_h5_data(V)
+    -solve_faces()
+    -convert_h5_data(V,Checks)
+    -get_face_allignment(V)
     -check_unassigned_faces(V)
     -check_unassigned_faceNodes(V)
-    -writetec(fname)
+    -check_unassigned_faceBC(V)
+    -check_unassigned_cellFace(V)
+    -check_cell_references(V)
+    -remove_common_nodes(V)
+    -check_tag_assignments()
+    -writetec(fname,V)
+    -write_ht(fname)
 
 - CBA_block
     -order_points()
@@ -90,7 +103,7 @@ class CBA_mesh():
                 self.block[b].connectivity[i]['orientation']=int(data[line_index,2])
                 line_index = line_index + 1
 
-            if self.block[b].nptsk == 1:
+            if self.block[b].nptsk == 1: 
                 # 2D mesh
                 self.block[b].nptsk = 2
                 self.block[b].X = np.concatenate((self.block[b].X,self.block[b].X))
@@ -104,23 +117,17 @@ class CBA_mesh():
         if V:
             print(self.ncell)
 
+        # Perform secondary data manupulations
         self.structure_data()
         self.get_common_faces()
         self.solve_faces()
-        
-    
-    def solve_faces(self):
-        self.nface = 0
-        for b in range(self.nblocks):
-            self.block[b].get_nfaces()
-            self.nface = self.nface + self.block[b].nface
 
     def structure_data(self):
-        # Process data into a slightly more useful format
+        # Process data into fully structured [i][j][k] indexing
         for b in range(self.nblocks):
             self.block[b].order_points()
             self.block[b].translate_BC()
-    
+        
     def get_common_faces(self):
         # Extract dictionary of common faces within multiblock mesh
         
@@ -128,6 +135,7 @@ class CBA_mesh():
 
         n_driving = 0
         n_driven = 0
+
         # A boundary face will be defined twice. 
         # The first instance it is defined will be the "Driving" case
         # The second instance it is defined as the "Driven" case
@@ -156,7 +164,6 @@ class CBA_mesh():
                         n_driven = n_driven + 1
 
                     if self.block[b].connectivity[i]['neighbour'] == b+1:
-                        print('wrap')
                         if self.block[b].connectivity[i]['orientation'] > i+1:
                             block2 = self.block[b].connectivity[i]['neighbour'] - 1
                             face2 = self.block[b].connectivity[i]['orientation'] - 1
@@ -177,73 +184,22 @@ class CBA_mesh():
             print('ERROR- mismatch in numbers of neighbouring faces')
 
         self.n_commonface = n_driving
-
-    def check_face_allignment(self,V=False):
-        problem_axis = 0
-        for f in range(self.n_commonface):              
-            if V:
-                print('MB face number: {}'.format(f))
-            block1 = self.common_faces[f]['block1']
-            face1 = self.common_faces[f]['face1']
-            block2 = self.common_faces[f]['block2']
-            face2 = self.common_faces[f]['face2']
-
-            if V:
-                print('block1: {} \tface1: {} \tblock2: {} \tface2: {}'.format(block1,face1,block2,face2))
-            
-            face1_corners = self.block[block1].get_face_corners(face1)
-            face2_corners = self.block[block2].get_face_corners(face2)
-
-            # Get face primary axis
-
-            ax1 = face1_corners[0,:] - face1_corners[1,:]
-            bx1 = face1_corners[0,:] - face1_corners[3,:]
-
-            ax2 = face2_corners[0,:] - face2_corners[1,:]
-            bx2 = face2_corners[0,:] - face2_corners[3,:]
-            cx2 = face2_corners[3,:] - face2_corners[2,:]
-            dx2 = face2_corners[1,:] - face2_corners[2,:]
-
-            face1_axes = {'ax1': ax1, 'bx1':bx1}
-            face2_axes = {'ax2': ax2, 'bx2':bx2, 'cx2':cx2, 'dx2':dx2}
-
-            print(face1_axes)
-
-            axis_colinear = 0
-            axis_reversed = 0
-
-            for i in face1_axes:
-                for j in face2_axes:
-                    cross = np.cross(face1_axes[i],face2_axes[j])
-                    dot = np.dot(face1_axes[i],face2_axes[j])
-
-                    if np.linalg.norm(cross) < 0.00001:
-                        axis_colinear = axis_colinear + 1
-                        self.common_faces[f][i] = {}
-                        self.common_faces[f][i]['aligned'] = j
-                        if dot > 0:
-                            msg = 'alligned'
-                            self.common_faces[f][i]['reversed'] = False
-                        elif dot < 0:
-                            msg = 'reversed'
-                            self.common_faces[f][i]['reversed'] = True
-                        if V:
-                            print('Colinear: {}, {} \t direction: {}'.format(i,j,msg))
-
-            if axis_colinear != 2:
-                problem_axis = problem_axis + 1
-
-        if problem_axis != 0:
-            print('yarrr we be avin a problem')
-            print(problem_axis)
+    
+    def solve_faces(self):
+        # Find how many faces are in each block, then in the full mesh
+        self.nface = 0
+        for b in range(self.nblocks):
+            self.block[b].get_nfaces()
+            self.nface = self.nface + self.block[b].nface
         
-    def convert_h5_data(self,V=False):
+    def convert_h5_data(self,V=False,Checks=False):
+        # Function to actually run the conversion of meshes
         cell_ID = 0
         face_ID = 0
 
-        self.check_face_allignment(V)
+        self.get_face_allignment(V)
 
-        # Solve primary faces within blocks
+        # Assign primary faces within blocks
         for b in range(self.nblocks):
             (cell_ID, face_ID) = mesh.block[b].assign_primary_faces(cell_ID,face_ID)
         if V:
@@ -271,6 +227,7 @@ class CBA_mesh():
                 print('MB_faceID: {} block1: {} block2: {} face1: {} face2: {}'.format(f,block1,block2,face1,face2))
                 print('npts_a: {} npts_b: {}'.format(npts_a, npts_b))
 
+            # Get indexes for driven faces
             for a in range(npts_a-1):
                 for b in range(npts_b-1):
                     face_ID = self.block[block1].get_boundface_ID(a,b,face1)
@@ -284,14 +241,17 @@ class CBA_mesh():
                         b2 = b
                     
                     self.block[block2].assign_boundface(a2,b2,face2,face_ID)
-            
-        
-        self.check_unassigned_faces(V)
+
+        # Create h5 dataset arrays
 
         self.faceCell = np.ones([self.nface,2], dtype=int) * -100
         self.cellFace = np.ones([self.ncell * 6],dtype=int) * -100
+        self.faceInfo = np.zeros([self.nface,2],dtype=int)
+        self.faceBC = np.ones([self.nface],dtype=int) * -100
+        self.faceNodes = np.ones([(self.nface)*4],dtype=int) * -100
+        self.faceType = np.ones([self.nface],dtype=int) * 4
 
-        # assign faceCell dataset
+        # assign faceCell dataset - Full cell index
         for b in range(self.nblocks):
             for i in range(self.block[b].nptsi - 1):
                 for j in range(self.block[b].nptsj - 1):
@@ -305,11 +265,9 @@ class CBA_mesh():
                             else:
                                 self.faceCell[face_ID,1] = cell_ID
 
-                            self.cellFace[(cell_ID * 6) + f] = face_ID
-
-        self.check_unassigned_cellFace(V)
+                            self.cellFace[(cell_ID * 6) + f] = face_ID          
                             
-        # assign halo cells
+        # assign halo cells - full face index
 
         nhalo = 0
 
@@ -320,57 +278,104 @@ class CBA_mesh():
         if V:
             print('Halo cells assigned: {}'.format(nhalo))
 
-        # assign boundary conditions
-
-        self.faceBC = np.ones([self.nface],dtype=int) * -100
+        # assign boundary conditions - block-face index
         
         nhalo_face = 0
-
-        for b in range(self.nblocks):
-            for f in self.block[b].face_BC:
-                self.faceBC[f] = self.block[b].face_BC[f]
-                if self.block[b].face_BC[f] != 0:
-                    nhalo_face = nhalo_face + 1
-        if V:
-            print('Halo faces expected: {}'.format(nhalo_face))
-
-        self.check_unassigned_faceBC(V)
-
-        # assign faceInfo dataset
-        self.faceInfo = np.zeros([self.nface,2],dtype=int)
-
-        for b in range(self.nblocks):
-            for f in self.block[b].face_info:
-                self.faceInfo[f,0] = self.block[b].face_info[f]
-
-        # assign face nodes
-        self.faceNodes = np.ones([(self.nface)*4],dtype=int) * -100
-
         point_offset = 0
 
-        for b in range(self.nblocks):
-            for f in self.block[b].face_nodes:
+        for b in range(self.nblocks): 
+            for f in self.block[b].face_BC:
+                self.faceBC[f] = self.block[b].face_BC[f]
+                self.faceInfo[f,0] = self.block[b].face_info[f]
+                if self.block[b].face_BC[f] != 0:
+                    nhalo_face = nhalo_face + 1
                 for p in range(4):
                     self.faceNodes[f*4 + p] = int(self.block[b].face_nodes[f][p] + point_offset)
             point_offset = point_offset + self.block[b].npts
-
-        self.check_unassigned_faceNodes(V)
+        if V:
+            print('Halo faces expected: {}'.format(nhalo_face))
         
-        # create nodeVertex dataset
+        # create nodeVertex dataset - block index
         for b in range(self.nblocks):
             if b == 0:
                 self.nodeVertex = self.block[b].X
             else:
                 self.nodeVertex = np.concatenate((self.nodeVertex,self.block[b].X))
-
-        # assign faceType
-        self.faceType = np.zeros([self.nface,2],dtype=int)
-        for f in range(self.nface):
-            self.faceType[f,0] = 4
-        
         self.remove_common_nodes(V)
+
+        # Run Checks
+        if Checks:
+            self.check_unassigned_cellFace(V)
+            self.check_unassigned_faces(V)
+            self.check_unassigned_faceBC(V)
+            self.check_unassigned_faceNodes(V)
+    
+    def get_face_allignment(self,V=False):
+        # Check the allignement of primary and secondary indexing axis for common faces
+        problem_axis = 0
+        for f in range(self.n_commonface):              
+            if V:
+                print('MB face number: {}'.format(f))
+            block1 = self.common_faces[f]['block1']
+            face1 = self.common_faces[f]['face1']
+            block2 = self.common_faces[f]['block2']
+            face2 = self.common_faces[f]['face2']
+
+            if V:
+                print('block1: {} \tface1: {} \tblock2: {} \tface2: {}'.format(block1,face1,block2,face2))
             
+            face1_corners = self.block[block1].get_face_corners(face1)
+            face2_corners = self.block[block2].get_face_corners(face2)
+
+            # Axis for driving faces - A is primary B is secondary
+
+            ax1 = face1_corners[0,:] - face1_corners[1,:]
+            bx1 = face1_corners[0,:] - face1_corners[3,:]
+
+            # Axis for driven faces - A is primary B is secondary
+            ax2 = face2_corners[0,:] - face2_corners[1,:]
+            bx2 = face2_corners[0,:] - face2_corners[3,:]
+            cx2 = face2_corners[3,:] - face2_corners[2,:]
+            dx2 = face2_corners[1,:] - face2_corners[2,:]
+
+            face1_axes = {'ax1': ax1, 'bx1':bx1}
+            face2_axes = {'ax2': ax2, 'bx2':bx2, 'cx2':cx2, 'dx2':dx2}
+
+            if V:
+                print(face1_axes)
+
+            axis_colinear = 0
+            axis_reversed = 0
+
+            for i in face1_axes:
+                for j in face2_axes:
+                    cross = np.cross(face1_axes[i],face2_axes[j])
+                    dot = np.dot(face1_axes[i],face2_axes[j])
+
+                    if np.linalg.norm(cross) < 0.00001:
+                        axis_colinear = axis_colinear + 1
+                        self.common_faces[f][i] = {}
+                        self.common_faces[f][i]['aligned'] = j
+                        if dot > 0:
+                            msg = 'alligned'
+                            self.common_faces[f][i]['reversed'] = False
+                        elif dot < 0:
+                            msg = 'reversed'
+                            self.common_faces[f][i]['reversed'] = True
+                        if V:
+                            print('Colinear: {}, {} \t direction: {}'.format(i,j,msg))
+
+            if axis_colinear != 2:
+                problem_axis = problem_axis + 1
+
+        if problem_axis != 0:
+            if V:
+                print('yarrr we be avin a problem')
+                print(problem_axis)
+        
+        
     def check_unassigned_faces(self,V=False):
+        # Check if any faces assigned for blocks have not been assigned
         if V:
             print('Checking for unassigned faces...')
         unassigned_faces = 0
@@ -385,6 +390,7 @@ class CBA_mesh():
             print('{} faces unassigned'.format(unassigned_faces))
 
     def check_unassigned_faceNodes(self,V=False):
+        # Check if any faceNodes have not been assigned
         if V:
             print('Checking for unassigned faceNodes...')
         unassigned_faceNodes = 0
@@ -395,6 +401,7 @@ class CBA_mesh():
             print('{} faceNodes unassigned'.format(unassigned_faceNodes))
 
     def check_unassigned_faceBC(self,V=False):
+        # Check if any faceBC entries are unassigned
         if V:
             print('Checking for unassigned faceBC...')
         unassigned_faceBC = 0
@@ -405,6 +412,7 @@ class CBA_mesh():
             print('{} faceBC unassigned'.format(unassigned_faceBC))
  
     def check_unassigned_cellFace(self,V=False):
+        # Check if any cellFace entries are unassigned
         if V:
             print('Checking for unassigned cellFaces')
         unassigned_cellFace = 0
@@ -415,6 +423,7 @@ class CBA_mesh():
             print('{} cellFaces unassigned'.format(unassigned_cellFace))
 
     def check_cell_references(self,V=False):
+        # Check how many times each cell is referenced in faces- should be 6 for each cell
         if V:
             print('Checking cell references')
         cell_references = np.zeros(self.ncell,dtype=int)
@@ -424,6 +433,7 @@ class CBA_mesh():
                 cell_references[self.faceCell[f,1]] = cell_references[self.faceCell[f,1]] + 1
 
     def remove_common_nodes(self,V=False):
+        # Nodes on block boundaries will be defined twice, remove the second existence of them, and change indexing
         if V:
             print('Removing common nodes')
 
@@ -461,9 +471,22 @@ class CBA_mesh():
             print(dict(zip(unique, counts)))
 
             print('{} Common nodes removed'.format(presort_nodes - postsort_nodes))
+
+    def check_tag_assignements(self):
+        # Check how many face tags are assigned for each relevent datasets
+        print('nFaces: {}'.format(self.nface))
+        print('faceBC tags:')
+        faceBC_tags, faceBC_count = np.unique(self.faceBC, return_counts=True)
+        print(dict(zip(faceBC_tags,faceBC_count)))
+
+        print('faceInfo tags:')
+        faceInfo_tags, faceInfo_count = np.unique(self.faceInfo[:,0], return_counts=True)
+        print(dict(zip(faceInfo_tags,faceInfo_count)))
+
+        print('faceType tags:')
+        faceType_tags, faceType_count = np.unique(self.faceType, return_counts=True)
+        print(dict(zip(faceType_tags,faceType_count)))
         
-
-
 
     def writetec(self,fname,V=True):
         # Write ZCFD mesh to tecplot FEPOLYHEDRON FORMAT
@@ -504,13 +527,13 @@ class CBA_mesh():
             print('Writing Face Info')
         fout.write('# Number of points per face \n')
         for i in range(n_f):
-            fout.write("{} \n".format(self.faceType[i,0]))
+            fout.write("{} \n".format(self.faceType[i]))
 
         if V:
             print('Writing Face Nodes')
         fout.write('# Nodes making up each face \n')
         for i in range(n_f):
-            n_points = int(self.faceType[i,0])
+            n_points = int(self.faceType[i])
             for j in range(n_points):
                 index = i * n_points + j
                 fout.write("{} ".format(self.faceNodes_sorted[index]+1))
@@ -542,9 +565,9 @@ class CBA_mesh():
         h5mesh.create_dataset("faceBC", data=self.faceBC, shape=(self.nface,1))
         h5mesh.create_dataset("faceCell", data=self.faceCell)
         h5mesh.create_dataset("faceInfo", data=self.faceInfo)
-        h5mesh.create_dataset("faceNodes", data=self.faceNodes, shape=(self.nface * 4,1))
-        h5mesh.create_dataset("faceType", data=self.faceType[:,0], shape=(self.nface,1))
-        h5mesh.create_dataset("nodeVertex", data=self.nodeVertex)
+        h5mesh.create_dataset("faceNodes", data=self.faceNodes_sorted, shape=(self.nface * 4,1))
+        h5mesh.create_dataset("faceType", data=self.faceType)
+        h5mesh.create_dataset("nodeVertex", data=self.nodeVertex_sorted)
 
 
 class CBA_block():
@@ -569,7 +592,6 @@ class CBA_block():
     def order_points(self):
         # Re-structure points to 3D array
         self.pts = np.zeros([self.nptsi,self.nptsj,self.nptsk,3])
- 
         
         index = 0
 
@@ -582,6 +604,7 @@ class CBA_block():
                     index = index + 1
 
     def get_corners(self):
+        # Get corner points of block
         corners = np.zeros([8,3])
         index = 0
 
@@ -606,6 +629,7 @@ class CBA_block():
         return(corners)
     
     def get_face_corners(self,face):
+        # extract corners from a specific face
 
         corners = self.get_corners()
 
@@ -630,6 +654,7 @@ class CBA_block():
         return(face_corners)
 
     def get_nfaces(self):
+        # Get the number of faces in block, taking into accound driven faces
 
         # Number of faces in plane (jk is i face)
         nface_jk = (self.nptsj - 1) * (self.nptsk - 1)
@@ -660,6 +685,7 @@ class CBA_block():
 
     
     def assign_primary_faces(self,cell_offset,face_offset):
+        # Assign all non-driven faces to the block
         self.cell_face = {}                       # Faces on each cell
         self.face_BC = {}
         self.face_nodes = {}
@@ -670,9 +696,9 @@ class CBA_block():
         boundary_faces = 0
         iface_ID = 0
 
-        boundary_conditions = [0,self.nptsi-2,0,self.nptsj-2,0,self.nptsk-2]
-        internal_conditions = [False,True,False,True,False,True]
-        facenode_conditions =  {0: {0:[0,2,4],1:[0,2,5],2:[0,3,5],3:[0,3,4]},
+        boundary_conditions = [0,self.nptsi-2,0,self.nptsj-2,0,self.nptsk-2]                # Logical array to dictate boundary state
+        internal_conditions = [False,True,False,True,False,True]                            # Logical array to dictate which internal faces should be assigned uniquely
+        facenode_conditions =  {0: {0:[0,2,4],1:[0,2,5],2:[0,3,5],3:[0,3,4]},               # Indexed nodes which make up corners of each face 
                                 1: {0:[1,2,4],1:[1,3,4],2:[1,3,5],3:[1,2,5]},
                                 2: {0:[0,2,4],1:[1,2,4],2:[1,2,5],3:[0,2,5]},
                                 3: {0:[0,3,4],1:[0,3,5],2:[1,3,5],3:[1,3,4]},
@@ -688,46 +714,46 @@ class CBA_block():
 
                     # Number cells
                     self.cell_face[i][j][k] = {}
-                    self.cell_face[i][j][k]['cell_ID'] = cell_ID + cell_offset
+                    self.cell_face[i][j][k]['cell_ID'] = cell_ID + cell_offset          # Assign next cellID
 
                     # Number faces
 
                     # identify if at boundary- then if unique face
-                    position = [i,i,j,j,k,k]
-                    corners = [i,i+1,j,j+1,k,k+1]
+                    position = [i,i,j,j,k,k]                                            # Position of the cell within the block
+                    corners = [i,i+1,j,j+1,k,k+1]                                       # Indexed corners of each cell
 
                     for p in range(6):
                         if position[p] == boundary_conditions[p]:
+                            # Face p is a boundary face                     
                             boundary_faces = boundary_faces + 1
-                            if self.connectivity[p]['type'] == 2:
-                                if not self.connectivity[p]['driving']:
+                            if self.connectivity[p]['type'] == 2:                       # Face is internal boundary face 
+                                if not self.connectivity[p]['driving']:                 # Face is driven internal boundary face
                                     self.cell_face[i][j][k][p] = 'hold'
                                 else:
-                                    self.cell_face[i][j][k][p] = face_ID + face_offset
-                                    self.face_BC[face_ID + face_offset] = 0    # Internal boundary face
-                                    self.face_info[face_ID + face_offset] = 0
-                                    self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)
+                                    self.cell_face[i][j][k][p] = face_ID + face_offset  # Face is driving internal boundary face
+                                    self.face_BC[face_ID + face_offset] = 0             
+                                    self.face_info[face_ID + face_offset] = 0           
+                                    self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)    
 
-                                    face_ID = face_ID + 1
+                                    face_ID = face_ID + 1                             
 
                             else:
-                                self.cell_face[i][j][k][p] = face_ID + face_offset
-                                self.face_BC[face_ID + face_offset] = self.connectivity[p]['BC_translated']
-                                self.face_info[face_ID + face_offset] = self.connectivity[p]['FT_translated']
-                                self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)
+                                self.cell_face[i][j][k][p] = face_ID + face_offset      # Face is boundary face
+                                self.face_BC[face_ID + face_offset] = self.connectivity[p]['BC_translated']   
+                                self.face_info[face_ID + face_offset] = self.connectivity[p]['FI_translated']   
+                                self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)            
                                 
-                                face_ID = face_ID + 1
+                                face_ID = face_ID + 1                               
 
-
-                        elif internal_conditions[p]:
-                            self.cell_face[i][j][k][p] = face_ID + face_offset
-                            self.face_BC[face_ID + face_offset] = 0
-                            self.face_info[face_ID + face_offset] = self.connectivity[p]['FT_translated']
-                            self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)
+                        elif internal_conditions[p]:                                    # Face is internal driving (max) face
+                            self.cell_face[i][j][k][p] = face_ID + face_offset     
+                            self.face_BC[face_ID + face_offset] = 0           
+                            self.face_info[face_ID + face_offset] = 0             
+                            self.face_nodes[face_ID + face_offset] = self.get_faceNodes(i,j,k,p)  
                             
-                            face_ID = face_ID + 1
+                            face_ID = face_ID + 1                                 
 
-                        elif p == 0:
+                        elif p == 0:                                                    # Face is internal driven (min) face
                             self.cell_face[i][j][k][0] = self.cell_face[i-1][j][k][1]
                         elif p == 2:
                             self.cell_face[i][j][k][2] = self.cell_face[i][j-1][k][3]
@@ -746,9 +772,9 @@ class CBA_block():
         return (cell_ID + cell_offset), (face_ID + face_offset)
     
     def get_boundface_ID(self,a,b,f):
+        # Get the idea for a boundary face (f) with primary index a and secondary index b
         face_ID = 0
 
-        # print(a,b,f,self.blockID)
         if f == 0:
             face_ID = self.cell_face[0][a][b][0]
         elif f == 1:
@@ -765,6 +791,8 @@ class CBA_block():
         return face_ID
 
     def assign_boundface(self,a,b,f,face_ID):
+        # Assign face_ID to boundary face f with primary index a and secondary index b
+
         # Check we're not pushing a face to a non-driven face
         if self.connectivity[f]['driving']:
             print('ERROR- PUSHING TO NON DRIVEN FACE')
@@ -783,6 +811,9 @@ class CBA_block():
             self.cell_face[a][b][self.nptsk-2][5] = face_ID
 
     def translate_BC(self):
+        # Translate boundary conditions
+
+
         # CBA format:
         # -2 = 2D wall (symmetry)
         # -1 = Aerodynamic surface
@@ -812,12 +843,13 @@ class CBA_block():
         # 6 = Periodic Upstream
 
         BC_dict = {-2:7, -1:3, 0:3, 1:9, 2:0, 3:12, 4:12}
-        FT_dict = {-2:7, -1:4, 0:3, 1:2, 2:0, 3:5, 4:6}
+        FI_dict = {-2:7, -1:4, 0:3, 1:2, 2:0, 3:5, 4:6}
         for f in range(6):
             self.connectivity[f]['BC_translated'] = BC_dict[self.connectivity[f]['type']]
-            self.connectivity[f]['FT_translated'] = FT_dict[self.connectivity[f]['type']]
+            self.connectivity[f]['FI_translated'] = FI_dict[self.connectivity[f]['type']]
 
     def get_faceNodes(self,i,j,k,p):
+        # Get the node index for face p with index i,j,k
         if p == 0:
             nv1 = i + j*self.nptsi + k*self.nptsi*self.nptsj
             nv2 = i + j*self.nptsi + (k+1)*self.nptsi*self.nptsj
@@ -849,17 +881,12 @@ class CBA_block():
             nv3 = (i+1) + (j+1)*self.nptsi + (k+1)*self.nptsi*self.nptsj
             nv4 = i + (j+1)*self.nptsi + (k+1)*self.nptsi*self.nptsj
 
-        return [nv4,nv3,nv2,nv1]
+        return [nv4,nv3,nv2,nv1]                    # Return order important with negative volumes
 
 
         
-# mesh = CBA_mesh(fname='../../data/3D/IEA_15MW/IEA_15MW_500K.blk')
-# mesh = CBA_mesh(fname='../../data/3D/MDO/MDO_250K.blk')
-mesh = CBA_mesh(fname='../../data/2D/2D_test/Omesh.blk')
-# mesh = CBA_mesh('../../data/3D/CT_rotor/CT0_250K.blk')
-mesh.convert_h5_data(V=True)
-# mesh.write_h5('../../data/3D/MDO/MDO_250K.blk.h5')
+mesh = CBA_mesh('../data/Omesh.blk')
+mesh.convert_h5_data()
+mesh.writetec('../data/Omesh.blk.h5.plt')
 
-mesh.write_h5('../../data/2D/2D_test/Omesh.test.h5')
-mesh.writetec('test.plt')
 

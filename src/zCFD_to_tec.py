@@ -12,8 +12,8 @@ tom.wainwright@bristol.ac.uk
 
 """
 
-fname = '../data/test.h5'
-tecname = '../data/test.h5.plt'
+fname = '../data/Omesh..blk.h5'
+tecname = '../data/Omesh.blk.h5.plt'
 
 
 f = h5py.File(fname,"r")

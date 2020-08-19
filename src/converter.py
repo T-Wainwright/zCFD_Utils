@@ -12,7 +12,7 @@ tom.wainwright@bristol.ac.uk
 
 To convert CBA mesh:
 
-mesh = CBA_mesh('path_To_blk_file')
+mesh = CBA_mesh('path-to-blk-file')
 mesh.convert_h5_data()
 mesh.write_h5('path-to-h5-file')
 
@@ -22,7 +22,7 @@ Classes:
     -structure_data()
     -get_common_faces()
     -solve_faces()
-    -convert_h5_data(V,Checks)
+    -convert_h5_data(V,Checks,sort_nodes)
     -get_face_allignment(V)
     -check_unassigned_faces(V)
     -check_unassigned_faceNodes(V)
@@ -66,6 +66,9 @@ class CBA_mesh():
             self.load_cba(fname,V)
 
     def load_cba(self,fname,V=False):
+        # Process data path and fname
+        self.fname = fname
+
         # Load CBA mesh
 
         data = np.loadtxt(fname)
@@ -192,7 +195,7 @@ class CBA_mesh():
             self.block[b].get_nfaces()
             self.nface = self.nface + self.block[b].nface
         
-    def convert_h5_data(self,V=False,Checks=False):
+    def convert_h5_data(self,V=False,Checks=False,sort_nodes=False):
         # Function to actually run the conversion of meshes
         cell_ID = 0
         face_ID = 0
@@ -301,7 +304,9 @@ class CBA_mesh():
                 self.nodeVertex = self.block[b].X
             else:
                 self.nodeVertex = np.concatenate((self.nodeVertex,self.block[b].X))
-        self.remove_common_nodes(V)
+
+        if sort_nodes:
+            self.remove_common_nodes(V)
 
         # Run Checks
         if Checks:
@@ -456,13 +461,13 @@ class CBA_mesh():
         for fn in range(len(self.faceNodes)):
             faceNodes_sorted[fn] = indices[self.faceNodes[fn]]
 
-        self.faceNodes_sorted = faceNodes_sorted
-        self.nodeVertex_sorted = unique
-        postsort_nodes = len(self.nodeVertex_sorted[:,0])
+        self.faceNodes = faceNodes_sorted
+        self.nodeVertex = unique
+        postsort_nodes = len(self.nodeVertex[:,0])
 
-        node_references = np.zeros_like(self.nodeVertex_sorted[:,0])
+        node_references = np.zeros_like(self.nodeVertex[:,0])
 
-        for fn in self.faceNodes_sorted:
+        for fn in self.faceNodes:
             node_references[fn] = node_references[fn] + 1
 
         unique, counts = np.unique(node_references, return_counts=True)
@@ -488,14 +493,17 @@ class CBA_mesh():
         print(dict(zip(faceType_tags,faceType_count)))
         
 
-    def writetec(self,fname,V=True):
+    def writetec(self,fname='NONE',V=False):
+        # Process fname
+        if fname == 'NONE':
+            fname = self.fname + '.h5.plt'
         # Write ZCFD mesh to tecplot FEPOLYHEDRON FORMAT
         if V:
             print('Writing tecplot mesh file: {}'.format(fname))
-        n_v = np.size(self.nodeVertex_sorted[:,0])
+        n_v = np.size(self.nodeVertex[:,0])
         n_c = self.ncell
         n_f = self.nface
-        n_fnodes = np.size(self.faceNodes_sorted) 
+        n_fnodes = np.size(self.faceNodes) 
 
         fout = open(fname,"w")
         if V:
@@ -515,13 +523,13 @@ class CBA_mesh():
             print('Writing Node Vertex Points')
         fout.write('# i Vertex Locations \n')
         for i in range(n_v):
-            fout.write("{} \n".format(self.nodeVertex_sorted[i,0]))
+            fout.write("{} \n".format(self.nodeVertex[i,0]))
         fout.write('# j Vertex Locations \n')
         for i in range(n_v):
-            fout.write("{} \n".format(self.nodeVertex_sorted[i,1]))
+            fout.write("{} \n".format(self.nodeVertex[i,1]))
         fout.write('# k Vertex Locations \n')
         for i in range(n_v):
-            fout.write("{} \n".format(self.nodeVertex_sorted[i,2]))
+            fout.write("{} \n".format(self.nodeVertex[i,2]))
 
         if V:
             print('Writing Face Info')
@@ -536,7 +544,7 @@ class CBA_mesh():
             n_points = int(self.faceType[i])
             for j in range(n_points):
                 index = i * n_points + j
-                fout.write("{} ".format(self.faceNodes_sorted[index]+1))
+                fout.write("{} ".format(self.faceNodes[index]+1))
             fout.write("\n")
 
         if V:
@@ -554,20 +562,27 @@ class CBA_mesh():
         if V:
             print('tecplot file written successfully')
 
-    def write_h5(self,fname):
+    def write_h5(self,fname='NONE'):
+        # Process fname
+        if fname == 'NONE':
+            fname = self.fname + '.h5'
+
+        # Create .h5 file
         f = h5py.File(fname,"w")
         h5mesh = f.create_group("mesh")
 
+        # Assign attributes
         h5mesh.attrs.create("numFaces",self.nface, shape=(1,1))
         h5mesh.attrs.create("numCells",self.ncell, shape=(1,1,))
 
+        # Assign datasets
         h5mesh.create_dataset("cellFace", data=self.cellFace)
         h5mesh.create_dataset("faceBC", data=self.faceBC, shape=(self.nface,1))
         h5mesh.create_dataset("faceCell", data=self.faceCell)
         h5mesh.create_dataset("faceInfo", data=self.faceInfo)
-        h5mesh.create_dataset("faceNodes", data=self.faceNodes_sorted, shape=(self.nface * 4,1))
+        h5mesh.create_dataset("faceNodes", data=self.faceNodes, shape=(self.nface * 4,1))
         h5mesh.create_dataset("faceType", data=self.faceType)
-        h5mesh.create_dataset("nodeVertex", data=self.nodeVertex_sorted)
+        h5mesh.create_dataset("nodeVertex", data=self.nodeVertex)
 
 
 class CBA_block():
@@ -887,6 +902,9 @@ class CBA_block():
         
 mesh = CBA_mesh('../data/Omesh.blk')
 mesh.convert_h5_data()
-mesh.writetec('../data/Omesh.blk.h5.plt')
+mesh.write_h5()
+mesh.writetec()
+
+
 
 

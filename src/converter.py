@@ -1,6 +1,5 @@
 import numpy as np
 import h5py
-import time
 
 """ 
 Converter for CBA mesh to zCFD h5 format 

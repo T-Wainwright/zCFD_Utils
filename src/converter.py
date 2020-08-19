@@ -375,7 +375,7 @@ class CBA_mesh():
 
         if problem_axis != 0:
             if V:
-                print('yarrr we be avin a problem')
+                print('Check axis orientations')
                 print(problem_axis)
         
         

@@ -47,7 +47,7 @@ class cba_mesh:
         self.ncell = 0                  # Number of cells
         self.f_com = 0                  # Number of common faces
 
-        self.data_path = '../../data/'  # Path to data
+        self.data_path = ''  # Path to data
 
         self.V = V                      # Verbosity logical flag
 
@@ -197,6 +197,10 @@ class cba_mesh:
             print('\n')
         return
 
+    def stack_rotor(self):
+        print('Stacking Rotor')
+
+
 class cba_block:
     def __init__(self):
         # Integers
@@ -283,167 +287,6 @@ class cba_block:
         self.nface = self.nface_i + self.nface_j + self.nface_k
         self.ncell = (self.npts_i - 1) * (self.npts_j - 1) * (self.npts_k - 1)
         return
-    
-    def conv_h5_data(self,f_offset,c_offset,p_offset,ghostID,h5):
-        # Convert block data into h5 format
-        print('Calculating h5 data')
-
-        cellID = 0
-
-        # Translate boundary conditions
-        BC_trans = np.zeros(6)
-        for n in range(6):                                                      # Translate boundary condition flags
-            if self.connectivity[n,0] == -1 or self.connectivity[n,0] == 0:
-                BC_trans[n] = 3
-            elif self.connectivity[n,0] == 1:
-                BC_trans[n] = 9
-            elif self.connectivity[n,0] == 2:
-                BC_trans[n] = 0
-            elif self.connectivity[n,0] == 3 or self.connectivity[n,0] == 4:
-                BC_trans[n] = 0           
-            self.face_bounds[n] = []
-            self.cell_bounds[n] = []
-        self.BC_condition = [0,self.npts_i-1,0,self.npts_j-1,0,self.npts_k-1]
-        
-        # Check for intenal / periodic faces. Keep a record of these faces, along with adjoining blocks
-        false_faces_i = 0
-        false_faces_j = 0
-        false_faces_k = 0
-
-        cellFace = np.zeros((self.ncell,6))
-        for k in range(self.npts_k-1):
-            for j in range(self.npts_j-1):
-                for i in range(self.npts_i-1):
-                    i_1 = f_offset + i + (j*self.npts_i) + (k*(self.npts_i)*(self.npts_j-1)) - false_faces_i
-                    i_2 = i_1 + 1
-
-
-                    j_1 = f_offset + self.nface_i + i + (j*(self.npts_i-1)) + (k*(self.npts_i-1)*self.npts_j) - false_faces_j
-                    j_2 = j_1 + (self.npts_i-1)
-
-
-                    k_1 = f_offset + self.nface_i + self.nface_j + i + (j*(self.npts_i-1)) + (k*(self.npts_i-1)*(self.npts_j-1)) - false_faces_k
-                    k_2 = k_1 + (self.npts_i-1)*(self.npts_j-1)
-
-                    # Examing boundary conditions
-                    face = [i,i+1,j,j+1,k,k+1]
-                    jk_index = j + k*(self.npts_j - 1)
-                    ik_index = i + k*(self.npts_i - 1)
-                    ij_index = i * j*(self.npts_i - 1)
-                    f_index = [jk_index,jk_index,ik_index,ik_index,ij_index,ij_index]
-                    cellFace[cellID,:] = [i_1,i_2,j_1,j_2,k_1,k_2]
-
-                    for f in range(6):
-                        if face[f] == self.BC_condition[f]:
-                            self.face_bounds[f] = np.append(self.face_bounds[f],cellFace[cellID,f])
-                            self.cell_bounds[f] = np.append(self.cell_bounds[f],cellID+c_offset)
-                            if self.connectivity[f,0] == 2:
-                                if self.falsefaces_log[f]:
-                                    # get faceID from source
-                                    block1 = self.common_faces[f]['block1']
-                                    face1 = self.common_faces[f]['face1']
-                                    ftype = self.common_faces[f]['type']
-                                    if ftype == 'alligned':
-                                        # print('alligned')
-                                        cellFace[cellID,f] = cba_mesh.block[block1].face_bounds[face1][f_index[f]]
-                                    elif ftype == 'mirror':
-                                        # print('mirror')
-                                        cellFace[cellID,f] = cba_mesh.block[block1].face_bounds[face1][(self.npts_i - i -2)]
-                                    # print('driven')
-                                    if f == 0 or f == 1:
-                                        false_faces_i = false_faces_i + 1
-                                    elif f == 2 or f == 3:
-                                        false_faces_j = false_faces_j + 1
-                                    elif f == 4 or f == 5:
-                                        false_faces_k = false_faces_k + 1
-                                    h5.faceCell[int(cellFace[cellID,f]),0] = cba_mesh.block[block1].cell_bounds[face1][f_index[f]]
-                                    h5.faceCell[int(cellFace[cellID,f]),1] = cellID
-                            elif self.connectivity[f,0] == -2 or self.connectivity[f,0] == -1 or self.connectivity[f,0] == 0 or self.connectivity[f,0] == 1:
-                                # Add ghost cells- always ghost cell OUTSIDE
-                                if f == 0 or f == 1:
-                                    h5.faceCell[int(cellFace[cellID,f]),0] = cellID + c_offset
-                                    h5.faceCell[int(cellFace[cellID,f]),1] = ghostID
-                                    ghostID = ghostID + 1
-                                elif f == 2 or f == 3:
-                                    h5.faceCell[int(cellFace[cellID,f]),0] = cellID + c_offset
-                                    h5.faceCell[int(cellFace[cellID,f]),1] = ghostID
-                                    ghostID = ghostID + 1                                   
-                                elif f == 4 or f == 5:
-                                    h5.faceCell[int(cellFace[cellID,f]),0] = cellID + c_offset
-                                    h5.faceCell[int(cellFace[cellID,f]),1] = ghostID
-                                    ghostID = ghostID + 1
-                            h5.faceBC[int(cellFace[cellID,f])] = BC_trans[f]
-                        else:
-                            if cellID > h5.faceCell[int(cellFace[cellID,f]),1]:
-                                if f == 0 or f == 1:
-                                    h5.faceCell[int(cellFace[cellID,f]),0] = h5.faceCell[int(cellFace[cellID,f]),1]
-                                    h5.faceCell[int(cellFace[cellID,f]),1] = cellID + c_offset
-                                elif f == 2 or f == 3:
-                                    h5.faceCell[int(cellFace[cellID,f]),0] = h5.faceCell[int(cellFace[cellID,f]),1]
-                                    h5.faceCell[int(cellFace[cellID,f]),1] = cellID + c_offset
-                                elif f == 4 or f == 5:
-                                    h5.faceCell[int(cellFace[cellID,f]),0] = h5.faceCell[int(cellFace[cellID,f]),1]
-                                    h5.faceCell[int(cellFace[cellID,f]),1] = cellID + c_offset
-
-                    i_1 = int(cellFace[cellID,0])
-                    i_2 = int(cellFace[cellID,1])
-                    j_1 = int(cellFace[cellID,2])
-                    j_2 = int(cellFace[cellID,3])
-                    k_1 = int(cellFace[cellID,4])
-                    k_2 = int(cellFace[cellID,5])
-                                    
-                    # Print off face nodes - could get negative volumes if not careful here
-                    h5.faceNodes[(i_1*4)+0] = p_offset + i + (j)*self.npts_i + (k)*self.npts_i*self.npts_j
-                    h5.faceNodes[(i_1*4)+1] = p_offset + i + (j)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-                    h5.faceNodes[(i_1*4)+2] = p_offset + i + (j+1)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-                    h5.faceNodes[(i_1*4)+3] = p_offset + i + (j+1)*self.npts_i + (k)*self.npts_i*self.npts_j
-              
-                    h5.faceNodes[(j_1*4)+0] = p_offset + i + (j)*self.npts_i + (k)*self.npts_i*self.npts_j
-                    h5.faceNodes[(j_1*4)+1] = p_offset + (i+1) + (j)*self.npts_i + (k)*self.npts_i*self.npts_j
-                    h5.faceNodes[(j_1*4)+2] = p_offset + (i+1) + (j)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-                    h5.faceNodes[(j_1*4)+3] = p_offset + (i) + (j)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-              
-                    h5.faceNodes[(k_1*4)+0] = p_offset + i + (j)*self.npts_i + (k)*self.npts_i*self.npts_j
-                    h5.faceNodes[(k_1*4)+1] = p_offset + (i) + (j+1)*self.npts_i + (k)*self.npts_i*self.npts_j
-                    h5.faceNodes[(k_1*4)+2] = p_offset + (i+1) + (j+1)*self.npts_i + (k)*self.npts_i*self.npts_j
-                    h5.faceNodes[(k_1*4)+3] = p_offset + (i+1) + (j)*self.npts_i + (k)*self.npts_i*self.npts_j
-              
-                    h5.faceNodes[(i_2*4)+0] = p_offset + (i+1) + j*self.npts_i + k*self.npts_i*self.npts_j
-                    h5.faceNodes[(i_2*4)+1] = p_offset + (i+1) + (j+1)*self.npts_i + k*self.npts_i*self.npts_j
-                    h5.faceNodes[(i_2*4)+2] = p_offset + (i+1) + (j+1)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-                    h5.faceNodes[(i_2*4)+3] = p_offset + (i+1) + (j)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-              
-                    h5.faceNodes[(j_2*4)+0] = p_offset + i + (j+1)*self.npts_i + (k)*self.npts_i*self.npts_j
-                    h5.faceNodes[(j_2*4)+1] = p_offset + (i) + (j+1)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-                    h5.faceNodes[(j_2*4)+2] = p_offset + (i+1) + (j+1)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-                    h5.faceNodes[(j_2*4)+3] = p_offset + (i+1) + (j+1)*self.npts_i + (k)*self.npts_i*self.npts_j
-              
-                    h5.faceNodes[(k_2*4)+0] = p_offset + i + (j)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-                    h5.faceNodes[(k_2*4)+1] = p_offset + (i+1) + (j)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-                    h5.faceNodes[(k_2*4)+2] = p_offset + (i+1) + (j+1)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-                    h5.faceNodes[(k_2*4)+3] = p_offset + (i) + (j+1)*self.npts_i + (k+1)*self.npts_i*self.npts_j
-
-                    cellID = cellID + 1
-
-        # Offset cell and face references
-        h5.nodeVertex = np.append(h5.nodeVertex,self.X,axis=0)
-        self.ghostID = ghostID
-
-    # def resolve_orientation(self,block1,face1,block2,face2):
-    #     # Extract driving face origin
-
-    #     if face1==0 or face1==1:                        # i face
-    #         npts_1_1 = cba_mesh.block[block1].npts_j
-    #         npts_1_2 = cba_mesh.block[block1].npts_k
-    #     elif: face1==2 or face1==3:                     # j face
-    #         npts_1_1 = cba_mesh.block[block1].npts_i
-    #         npts_1_2 = cba_mesh.block[block1].npts_k
-    #     elif: face1==4 or face1==5:                     # k face
-    #         npts_1_1 = cba_mesh.block[block1].npts_i
-    #         npts_1_2 = cba_mesh.block[block1].npts_j
-        
-    #     X_1_1 = cba_mesh.block[block1].X[0,:]
-        
 
         
 class h5_mesh:
@@ -531,13 +374,13 @@ class h5_mesh:
             print('Writing Face Info')
         fout.write('# Number of points per face \n')
         for i in range(n_f):
-            fout.write("{} \n".format(self.faceType[i,0]))
+            fout.write("{} \n".format(self.faceType[i]))
 
         if V:
             print('Writing Face Nodes')
         fout.write('# Nodes making up each face \n')
         for i in range(n_f):
-            n_points = int(self.faceType[i,0])
+            n_points = int(self.faceType[i])
             for j in range(n_points):
                 index = i * n_points + j
                 fout.write("{} ".format(self.faceNodes[index,0]+1))
@@ -617,7 +460,7 @@ class h5_mesh:
         self.X_v = self.nodeVertex
 
         if V:
-            print('faces successfully extracted')
+            print('{} faces successfully extracted'.format(self.n_s))
         return
 
     def extractHaloFaces(self):
@@ -660,12 +503,125 @@ class h5_mesh:
         fsur.write("{} \n".format(self.n_s))
         for i in range(self.n_s):
             fsur.write("{:.12f} \t {:.12f} \t {:.12f} \n".format(self.X_s[i,0],self.X_s[i,1],self.X_s[i,2]))
+        fsur.close()
 
         if V:
             print('LKE config files written successfully')
         return
 
+    def generate_deformation_file(self,fname):
 
-mesh = h5_mesh()
-mesh.load_zcfd('../../data/2D/2D_test/test.h5')
-print(np.max(mesh.cellFace))
+        fout = open(fname,"w")
+        fout.write("{} \n".format(self.n_s))
+        for i in range(self.n_s):
+            fout.write("{:.12f} \t {:.12f} \t {:.12f} \n".format(self.X_def[i,0],self.X_def[i,1],self.X_def[i,2]))
+        fout.close()
+
+    def rotate_surface(self,alpha):
+        self.X_def = np.zeros_like(self.X_s)
+
+        alpha_rad = np.deg2rad(alpha)
+
+        R = np.array([[np.cos(alpha_rad), 0,-np.sin(alpha_rad)],[0,1,0],[np.sin(alpha_rad),0,np.cos(alpha_rad)]])
+
+        for i in range(self.n_s):
+            self.X_def[i,:] = np.matmul(R,self.X_s[i,:]) - self.X_s[i,:]
+            # self.X_def[i,0] = np.cos(alpha_rad) * self.X_s[i,0] - np.sin(alpha_rad) * self.X_s[i,2]
+            # self.X_def[i,2] = np.sin(alpha_rad) * self.X_s[i,0] + np.cos(alpha_rad) * self.X_s[i,2]
+        # self.X_def = self.X_s
+
+    def translate_surface(self,vec):
+
+        for i in range(self.n_s):
+            self.X_def[i,0] = vec[0]
+            self.X_def[i,1] = vec[1]
+            self.X_def[i,2] = vec[2]
+
+    
+    def rbf_rotate(self,surfID,r0,nbase,alpha):
+        # Preprocessing
+        self.extractSurfaceFaces(surfID)
+        self.writeLKEconf('rotate.LKE',r0,nbase)
+
+        os.system('meshprep rotate.LKE')
+
+        self.rotate_surface(alpha)
+        # vec = [0,0,5]
+        # self.translate_surface(vec)
+
+        self.generate_deformation_file('surface_deformations.xyz')
+
+        os.system('meshdef volume.xyz.meshdef surface_deformations.xyz volume_deformations.xyz')
+
+        self.X_vol_deformed = np.loadtxt('volume_deformations.xyz',skiprows=1)
+
+        print(self.faceType.shape,self.numFaces)
+        self.nodeVertex = self.X_vol_deformed
+
+        self.writetec('test.plt')
+
+        self.writeh5('deformed.h5')
+
+        os.system('rm rotate.LKE surface.xyz volume.xyz surface_deformations.xyz volume_deformations.xyz volume.xyz.meshdef def.xyz')
+
+        
+        
+
+
+mesh1 = cba_mesh('../../data/3D/IEA_15MW/IEA_15MW_1M.blk')
+mesh2 = cba_mesh('../../data/3D/IEA_15MW/IEA_15MW_1M.blk')
+
+print(mesh1.block[0].X[0][2])
+print(mesh1.block[14].X[-1][2])
+
+h = np.abs(mesh1.block[0].X[0][2] - mesh1.block[14].X[-1][2])
+
+print(h)
+
+for b in mesh2.block:
+    print(b)
+    # Drop z coordinate by height of mesh1
+    for p in range(mesh2.block[b].npts):
+        mesh2.block[b].X[p][2] = mesh2.block[b].X[p][2] - h
+
+    # Increase block indexing in connectivity
+    for c in range(6):
+        if mesh2.block[b].connectivity[c,1] != 0:
+            mesh2.block[b].connectivity[c,1] = mesh2.block[b].connectivity[c,1] + 36
+    
+# Adjust connectivity
+# Bottom blocks of mesh1:
+print(mesh1.block[1].connectivity)
+
+connectivity_dict = {0:14,1:15,2:16,3:17,18:32,19:33,20:34,21:35}
+
+
+for a in connectivity_dict:
+    mesh1.block[a].connectivity[2,0] = 2                                    # Internal face
+    mesh1.block[a].connectivity[2,1] = connectivity_dict[a] + 37            # Neighbour
+    mesh1.block[a].connectivity[2,2] = 4                                    # Connected to jmax
+
+    mesh2.block[connectivity_dict[a]].connectivity[3,0] = 2
+    mesh2.block[connectivity_dict[a]].connectivity[3,1] = a + 1
+    mesh2.block[connectivity_dict[a]].connectivity[3,2] = 3
+
+# Append mesh1 file
+for b in mesh2.block:
+    mesh1.block[b + 36] = mesh2.block[b]
+
+mesh1.n_blocks = mesh1.n_blocks * 2
+
+mesh1.writeblk('../../data/3D/IEA_15MW/IEA_15MW_1M_Occluded.blk')
+mesh1.writetec('../../data/3D/IEA_15MW/IEA_15MW_1M_Occluded.blk.plt')
+print(mesh2.block[14].connectivity)
+print(mesh2.block[15].connectivity)
+print(mesh2.block[16].connectivity)
+print(mesh2.block[17].connectivity)
+
+# interior bottom blocks: 0, 1, 2, 3 -jmin
+# exterior bottom blocks: 18, 19, 20, 21 -jmin
+
+# interior top blocks: 14, 15, 16, 17 -jmax
+# exterior top blocks: 32, 33, 34, 35 -jmax
+
+

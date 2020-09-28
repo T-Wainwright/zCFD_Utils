@@ -1,0 +1,6 @@
+voltype = xyz 
+mesh = volume.xyz 
+surfpts = surface.xyz 
+rbfmode = 1 
+r0 = 5 
+nbase = 25

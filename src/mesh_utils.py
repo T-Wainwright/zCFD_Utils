@@ -565,58 +565,61 @@ class h5_mesh:
         os.system('rm rotate.LKE surface.xyz volume.xyz surface_deformations.xyz volume_deformations.xyz volume.xyz.meshdef def.xyz')
 
         
-        
+mesh = h5_mesh()
+mesh.load_zcfd('../../data/3D/IEA_15MW/IEA_15MW_5M.blk.h5')
+mesh.extractSurfaceFaces(5)
+mesh.extractSurfaceFaces(6)
 
 
-mesh1 = cba_mesh('../../data/3D/IEA_15MW/IEA_15MW_1M.blk')
-mesh2 = cba_mesh('../../data/3D/IEA_15MW/IEA_15MW_1M.blk')
+# mesh1 = cba_mesh('../../data/3D/IEA_15MW/IEA_15MW_1M.blk')
+# mesh2 = cba_mesh('../../data/3D/IEA_15MW/IEA_15MW_1M.blk')
 
-print(mesh1.block[0].X[0][2])
-print(mesh1.block[14].X[-1][2])
+# print(mesh1.block[0].X[0][2])
+# print(mesh1.block[14].X[-1][2])
 
-h = np.abs(mesh1.block[0].X[0][2] - mesh1.block[14].X[-1][2])
+# h = np.abs(mesh1.block[0].X[0][2] - mesh1.block[14].X[-1][2])
 
-print(h)
+# print(h)
 
-for b in mesh2.block:
-    print(b)
-    # Drop z coordinate by height of mesh1
-    for p in range(mesh2.block[b].npts):
-        mesh2.block[b].X[p][2] = mesh2.block[b].X[p][2] - h
+# for b in mesh2.block:
+#     print(b)
+#     # Drop z coordinate by height of mesh1
+#     for p in range(mesh2.block[b].npts):
+#         mesh2.block[b].X[p][2] = mesh2.block[b].X[p][2] - h
 
-    # Increase block indexing in connectivity
-    for c in range(6):
-        if mesh2.block[b].connectivity[c,1] != 0:
-            mesh2.block[b].connectivity[c,1] = mesh2.block[b].connectivity[c,1] + 36
+#     # Increase block indexing in connectivity
+#     for c in range(6):
+#         if mesh2.block[b].connectivity[c,1] != 0:
+#             mesh2.block[b].connectivity[c,1] = mesh2.block[b].connectivity[c,1] + 36
     
-# Adjust connectivity
-# Bottom blocks of mesh1:
-print(mesh1.block[1].connectivity)
+# # Adjust connectivity
+# # Bottom blocks of mesh1:
+# print(mesh1.block[1].connectivity)
 
-connectivity_dict = {0:14,1:15,2:16,3:17,18:32,19:33,20:34,21:35}
+# connectivity_dict = {0:14,1:15,2:16,3:17,18:32,19:33,20:34,21:35}
 
 
-for a in connectivity_dict:
-    mesh1.block[a].connectivity[2,0] = 2                                    # Internal face
-    mesh1.block[a].connectivity[2,1] = connectivity_dict[a] + 37            # Neighbour
-    mesh1.block[a].connectivity[2,2] = 4                                    # Connected to jmax
+# for a in connectivity_dict:
+#     mesh1.block[a].connectivity[2,0] = 2                                    # Internal face
+#     mesh1.block[a].connectivity[2,1] = connectivity_dict[a] + 37            # Neighbour
+#     mesh1.block[a].connectivity[2,2] = 4                                    # Connected to jmax
 
-    mesh2.block[connectivity_dict[a]].connectivity[3,0] = 2
-    mesh2.block[connectivity_dict[a]].connectivity[3,1] = a + 1
-    mesh2.block[connectivity_dict[a]].connectivity[3,2] = 3
+#     mesh2.block[connectivity_dict[a]].connectivity[3,0] = 2
+#     mesh2.block[connectivity_dict[a]].connectivity[3,1] = a + 1
+#     mesh2.block[connectivity_dict[a]].connectivity[3,2] = 3
 
-# Append mesh1 file
-for b in mesh2.block:
-    mesh1.block[b + 36] = mesh2.block[b]
+# # Append mesh1 file
+# for b in mesh2.block:
+#     mesh1.block[b + 36] = mesh2.block[b]
 
-mesh1.n_blocks = mesh1.n_blocks * 2
+# mesh1.n_blocks = mesh1.n_blocks * 2
 
-mesh1.writeblk('../../data/3D/IEA_15MW/IEA_15MW_1M_Occluded.blk')
-mesh1.writetec('../../data/3D/IEA_15MW/IEA_15MW_1M_Occluded.blk.plt')
-print(mesh2.block[14].connectivity)
-print(mesh2.block[15].connectivity)
-print(mesh2.block[16].connectivity)
-print(mesh2.block[17].connectivity)
+# mesh1.writeblk('../../data/3D/IEA_15MW/IEA_15MW_1M_Occluded.blk')
+# mesh1.writetec('../../data/3D/IEA_15MW/IEA_15MW_1M_Occluded.blk.plt')
+# print(mesh2.block[14].connectivity)
+# print(mesh2.block[15].connectivity)
+# print(mesh2.block[16].connectivity)
+# print(mesh2.block[17].connectivity)
 
 # interior bottom blocks: 0, 1, 2, 3 -jmin
 # exterior bottom blocks: 18, 19, 20, 21 -jmin

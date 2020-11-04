@@ -899,7 +899,7 @@ class CBA_block():
 
 
         
-mesh = CBA_mesh('../../data/3D/IEA_15MW/IEA_15MW_1M_Occluded.blk')
+mesh = CBA_mesh('../../data/3D/CT_rotor/CT8_1M.blk')
 mesh.convert_h5_data()
 mesh.write_h5()
 mesh.writetec()

@@ -1,5 +1,6 @@
 import numpy as np
 import h5py
+import multiprocessing as mp
 
 """ 
 Converter for CBA mesh to zCFD h5 format 
@@ -193,6 +194,10 @@ class CBA_mesh():
         for b in range(self.nblocks):
             self.block[b].get_nfaces()
             self.nface = self.nface + self.block[b].nface
+
+    def sortnodes(self,find,replace):
+        replaceNodes = np.where(self.faceNodes==find)
+        self.faceNodes[replaceNodes] = replace
         
     def convert_h5_data(self,V=False,Checks=False,sort_nodes=False):
         # Function to actually run the conversion of meshes
@@ -712,20 +717,12 @@ class CBA_block():
 
         boundary_conditions = [0,self.nptsi-2,0,self.nptsj-2,0,self.nptsk-2]                # Logical array to dictate boundary state
         internal_conditions = [False,True,False,True,False,True]                            # Logical array to dictate which internal faces should be assigned uniquely
-        facenode_conditions =  {0: {0:[0,2,4],1:[0,2,5],2:[0,3,5],3:[0,3,4]},               # Indexed nodes which make up corners of each face 
-                                1: {0:[1,2,4],1:[1,3,4],2:[1,3,5],3:[1,2,5]},
-                                2: {0:[0,2,4],1:[1,2,4],2:[1,2,5],3:[0,2,5]},
-                                3: {0:[0,3,4],1:[0,3,5],2:[1,3,5],3:[1,3,4]},
-                                4: {0:[0,2,4],1:[0,3,4],2:[1,3,4],3:[1,2,4]},
-                                5: {0:[0,2,5],1:[1,2,5],2:[1,3,5],3:[0,3,5]}}
         
-
         for i in range(self.nptsi-1):
             self.cell_face[i] = {}
             for j in range(self.nptsj-1):
                 self.cell_face[i][j] = {}
                 for k in range(self.nptsk-1):
-
                     # Number cells
                     self.cell_face[i][j][k] = {}
                     self.cell_face[i][j][k]['cell_ID'] = cell_ID + cell_offset          # Assign next cellID
@@ -786,7 +783,7 @@ class CBA_block():
         return (cell_ID + cell_offset), (face_ID + face_offset)
     
     def get_boundface_ID(self,a,b,f):
-        # Get the idea for a boundary face (f) with primary index a and secondary index b
+        # Get the ID for a boundary face (f) with primary index a and secondary index b
         face_ID = 0
 
         if f == 0:
@@ -824,6 +821,14 @@ class CBA_block():
         elif f == 5:
             self.cell_face[a][b][self.nptsk-2][5] = face_ID
 
+    def resolve_cellNodes(self):
+        cell_nodes = {}
+        for i in range(self.nptsi-1):
+            for j in range(self.nptsj-1):
+                for k in range(self.nptsk-1):
+                    for p in range(6):
+                        cell_nodes[p] = self.cell_face[i][j][k][p]['nodes']
+                        # print(cell_nodes)
     def translate_BC(self):
         # Translate boundary conditions
 
@@ -899,11 +904,68 @@ class CBA_block():
 
 
         
-mesh = CBA_mesh('../../data/3D/CT_rotor/CT8_1M.blk')
-mesh.convert_h5_data()
-mesh.write_h5()
+
+def check_and_replace(mesh):
+    ncell_nodes = np.zeros(mesh.ncell)
+    problem_cells = 1
+    refinements = 1
+    node_map = {}
+    # pool=mp.Pool(mp.cpu_count())
+    while problem_cells != 0:
+        node_map = {}
+        problem_cells = 0
+        print(refinements)
+        refinements = refinements + 1
+        for c in range(mesh.ncell):
+            cell_nodes = []
+            faces = mesh.cellFace[6*c: 6*c+6]
+            for f in faces:
+                cell_nodes = np.append(cell_nodes,mesh.faceNodes[f*4:f*4+4])
+
+            cell_nodes = np.unique(cell_nodes)
+            num_cell_nodes = len(cell_nodes)
+            ncell_nodes[c] = num_cell_nodes
+        
+
+            if num_cell_nodes > 8:
+                problem_cells = problem_cells + 1
+                for i in range(num_cell_nodes):
+                    for j in range(num_cell_nodes):
+                        nodei = int(cell_nodes[i])
+                        nodej = int(cell_nodes[j])
+                        rad = np.linalg.norm(mesh.nodeVertex[nodei,:] - mesh.nodeVertex[nodej,:])
+                        if rad < 0.0001 and nodei != nodej:
+                            if nodei > nodej:
+                                node_map[nodej] = nodei
+
+        print(problem_cells)
+        unique, counts = np.unique(ncell_nodes,return_counts=True)
+        print(dict(zip(unique,counts)))
+
+        i = 0
+        for f in reversed(node_map.keys()):
+            print('{} \\ {}'.format(i,len(node_map.keys())))
+            mesh.sortnodes(node_map[f],f)
+            i = i+1
+            # pool.apply_async(mesh.sortnodes,args=(node_map[f],f))
+
+        # pool.close()
+        # pool.join()
+            
+
+    
+
+print('Running')
+
+mesh = CBA_mesh('../../data/3D/IEA_15MW/Single_Turbine_5M/IEA_15MW_5M.blk')
+# mesh = CBA_mesh('../data/CT0_250K.blk')
+mesh.convert_h5_data(sort_nodes=True,V=True)
+
+print('Running2')
+
+check_and_replace(mesh)
+
+# print(problem_cells)
+
 mesh.writetec()
-
-
-
-
+mesh.write_h5()

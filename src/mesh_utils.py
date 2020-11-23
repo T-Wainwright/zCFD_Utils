@@ -313,6 +313,7 @@ class h5_mesh:
         self.numFaces = int(g.attrs.get('numFaces'))
         self.numCells = int(g.attrs.get('numCells'))
 
+        self.cellZone = np.array(g.get('cellZone'))
         self.cellFace = np.array(g.get('cellFace'))
         self.cellType = np.array(g.get('cellType'))
         self.faceBC = np.array(g.get('faceBC'))
@@ -375,6 +376,75 @@ class h5_mesh:
         fout.write('# Number of points per face \n')
         for i in range(n_f):
             fout.write("{} \n".format(self.faceType[i][0]))
+<<<<<<< HEAD
+=======
+
+        if V:
+            print('Writing Face Nodes')
+        fout.write('# Nodes making up each face \n')
+        for i in range(n_f):
+            n_points = int(self.faceType[i])
+            for j in range(n_points):
+                index = i * n_points + j
+                fout.write("{} ".format(self.faceNodes[index,0]+1))
+            fout.write("\n")
+
+        if V:
+            print('Writing Face Cell Interfaces')
+        fout.write('# Left Cells \n')
+        for i in range(n_f):
+            fout.write("{} \n".format(self.faceCell[i,0]+1))
+        fout.write('# Right Cells \n')
+        for i in range(n_f):
+            if self.faceCell[i,1] < n_c:
+                fout.write("{} \n".format(self.faceCell[i,1]+1))
+            elif self.faceCell[i,1] >= n_c:
+                fout.write("0 \n")
+        
+        if V:
+            print('tecplot file written successfully')
+
+    def writetec_boundary(self,fname,V=True):
+        # Write ZCFD mesh to tecplot FEPOLYHEDRON FORMAT
+        if V:
+            print('Writing tecplot mesh file: {}'.format(fname))
+        n_v = np.size(self.nodeVertex[:,0])
+        n_c = self.numCells
+        n_f = self.numFaces
+        n_fnodes = np.size(self.faceNodes)
+
+        fout = open(fname,"w")
+        if V:
+            print('Writing Header Information')
+        fout.write("VARIABLES= \"X\" \"Y\" \"Z\" \"t\" \n")
+        fout.write("ZONE \n")
+        fout.write("NODES = {} \n".format(n_v))                     # Number of Nodes
+        fout.write("FACES = {} \n".format(n_f))                     # Number of faces
+        fout.write("TOTALNUMFACENODES = {} \n".format(n_fnodes))    # Number of nodes in faces
+        fout.write("NUMCONNECTEDBOUNDARYFACES = 0 \n")              # Number of connected boundary faces (0)
+        fout.write("TOTALNUMBOUNDARYCONNECTIONS = 0 \n")            # Number of connected zones (0)
+        fout.write("ELEMENTS = {} \n".format(n_c))                  # Number of cells
+        fout.write("DATAPACKING = BLOCK \n")                        # Data formatting- must be block for FEPOLYHEDRON
+        fout.write("ZONETYPE = FEPOLYHEDRON \n")                    # Mesh type- FE polyhedron for zCFD
+
+        if V:
+            print('Writing Node Vertex Points')
+        fout.write('# i Vertex Locations \n')
+        for i in range(n_v):
+            fout.write("{} \n".format(self.nodeVertex[i,0]))
+        fout.write('# j Vertex Locations \n')
+        for i in range(n_v):
+            fout.write("{} \n".format(self.nodeVertex[i,1]))
+        fout.write('# k Vertex Locations \n')
+        for i in range(n_v):
+            fout.write("{} \n".format(self.nodeVertex[i,2]))
+
+        if V:
+            print('Writing Face Info')
+        fout.write('# Number of points per face \n')
+        for i in range(n_f):
+            fout.write("{} \n".format(int(self.faceType[i][0])))
+>>>>>>> ad54f0d988afbd28d1fc6c8242256ea7e62c2f28
 
         if V:
             print('Writing Face Nodes')
@@ -414,7 +484,7 @@ class h5_mesh:
         h5mesh.attrs.create("numFaces",self.numFaces, shape=(1,1))
         h5mesh.attrs.create("numCells",self.numCells, shape=(1,1))
 
-        h5mesh.create_dataset("cellFace", data=self.cellFace)
+        # h5mesh.create_dataset("cellFace", data=self.cellFace)
         h5mesh.create_dataset("faceBC", data=self.faceBC, shape=(self.numFaces,1))
         h5mesh.create_dataset("faceCell", data=self.faceCell)
         h5mesh.create_dataset("faceInfo", data=self.faceInfo)
@@ -426,41 +496,50 @@ class h5_mesh:
             print('h5 file written successfully')
         return
 
-    def extractSurfaceFaces(self,facetag, V=True):
+    def write_surface_tec(self, V=True):
         # Extract unstructured surface faces
         if V:
             print('Extracting faces with tag: {}'.format(facetag))
-        surFace = np.array(np.where(self.faceInfo[:,0]==facetag))[0,:]
         
-        n_s = 0
-        for f in surFace:
-            n_s = n_s + int(self.faceType[f])
-        n_v = np.size(self.nodeVertex[:,0])
+        # Get surface face ID's
+        surface_faceID = np.array(np.where(self.faceInfo[:,0]!=0))[0,:]
+        n_face = len(surface_faceID)
+        surface_faceTag = np.zeros(n_face)
+        surface_faceNodes = np.zeros(n_face*4)
 
-        X_s = np.zeros((n_s,3))
+        # Find nodes and boundary tags
+        for i in range(n_face):
+            surface_faceTag[i] = self.faceInfo[[surface_faceID[i]],0]
+            for j in range(self.faceType[surface_faceID[i]]):
+                index = 4*i + j
+                surface_faceNodes[index] = self.faceNodes[4*surface_faceID[i]+j,0]
         
-        ii = 0
+        # Extract only unique nodes
+        unique_nodes, unique_counts = np.unique(surface_faceNodes,return_counts=True)
+        n_nodes=len(unique_nodes)
 
-        for i in surFace:
-            n_points = int(self.faceType[i])
-            for j in range(n_points):
-                index = self.faceIndex[i] + j
 
-                X_s[ii,0] = self.nodeVertex[self.faceNodes[index],0]
-                X_s[ii,1] = self.nodeVertex[self.faceNodes[index],1]
-                X_s[ii,2] = self.nodeVertex[self.faceNodes[index],2]
-            
-                ii = ii + 1
+        f = open("../data/Test_surface.plt","w")
+        f.write("TITLE = Boundary plot\n")
+        f.write("VARIABLES = \"X\" \"Y\" \"Z\" \"Tag\"\n")
+        f.write("ZONE T=\"PURE-QUADS\", NODES={}, ELEMENTS={}, DATAPACKING=BLOCK, VARLOCATION=([4]=CELLCENTERED), ZONETYPE=FEQUADRILATERAL\n".format(n_nodes,n_face))
 
-        # Assign datasets
-        self.n_s = n_s
-        self.n_v = n_v
+        # Print unique node locations
+        for n in unique_nodes:
+            f.write("{}\n".format(self.nodeVertex[int(n),0]))
+        for n in unique_nodes:
+            f.write("{}\n".format(self.nodeVertex[int(n),1]))
+        for n in unique_nodes:
+            f.write("{}\n".format(self.nodeVertex[int(n),2]))
+        for face in range(n_face):
+            f.write("{}\n".format(int(surface_faceTag[face])))
 
-        self.X_s = X_s
-        self.X_v = self.nodeVertex
+        # Print nodes making up each face
+        for face in range(n_face):
+            for i in range(4):
+                f.write("{} ".format(np.where(unique_nodes==surface_faceNodes[face*4+i])[0][0]+1))
+            f.write("\n")
 
-        if V:
-            print('{} faces successfully extracted'.format(self.n_s))
         return
 
     def extractHaloFaces(self):
@@ -585,6 +664,7 @@ class h5_mesh:
 # f.close()
 
 mesh = h5_mesh()
+<<<<<<< HEAD
 mesh.load_zcfd('../../CBA_meshes/IEA_15MW/IEA_15MW_Occluded_12M.cas.h5')
 mesh.writetec('../../CBA_meshes/IEA_15MW/IEA_15MW_Occluded_12M.cas.h5.plt')
 
@@ -641,11 +721,18 @@ mesh.writetec('../../CBA_meshes/IEA_15MW/IEA_15MW_Occluded_12M.cas.h5.plt')
 # print(mesh2.block[15].connectivity)
 # print(mesh2.block[16].connectivity)
 # print(mesh2.block[17].connectivity)
+=======
+mesh.load_zcfd('../../data/3D/IEA_15MW/Single_Turbine_5M/IEA_15MW_5M.cas.h5')
+# mesh.load_zcfd('../data/CT0_250K.blk.h5')
+# mesh.writetec(fname='../../data/3D/IEA_15MW/Single_Turbine_5M/IEA_15MW_5M.cas.h5.plt')
+>>>>>>> ad54f0d988afbd28d1fc6c8242256ea7e62c2f28
 
-# interior bottom blocks: 0, 1, 2, 3 -jmin
-# exterior bottom blocks: 18, 19, 20, 21 -jmin
+print(mesh.cellZone[0])
 
-# interior top blocks: 14, 15, 16, 17 -jmax
-# exterior top blocks: 32, 33, 34, 35 -jmax
+f = open('../data/zones.txt',"w")
+f.write('{}'.format(np.unique(mesh.cellZone)))
+f.close()
+print(np.unique(mesh.cellZone))
+mesh.writeh5('../data/IEA_15MW_5M.cas.h5')
 
 

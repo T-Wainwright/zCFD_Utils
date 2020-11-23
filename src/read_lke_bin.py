@@ -87,7 +87,7 @@ def read_matrix(fname,offset):
     HEADER = np.fromfile(fname,dtype=np.int32,count=4,offset=offset)
     offset = offset + 4*4
     # Process Header 
-    print(HEADER)
+    # print(HEADER)
     if HEADER[0] != 1:
         print('Wrong data type')
         exit()
@@ -139,7 +139,7 @@ def read_CRS(fname,offset):
     return DATA, offset
 
 
-fname = '../data/aero_nodes.xyz.meshdef'
+fname = '../../cases/MDO_250K/aero_nodes.xyz.meshdef'
 
 offset = 0
 i = 0
@@ -182,8 +182,17 @@ elif FILE_DATA['rbfmode'] == 0:
     FILE_DATA['Mmat'], offset = read_matrix(fname,offset)
 
 
+print(FILE_DATA['Mmat'])
 
+phi = FILE_DATA['Mmat']
 
+phi_inv = np.linalg.pinv(phi)
 
+print(phi_inv.shape)
+
+<<<<<<< HEAD
 print(FILE_DATA)
 
+=======
+print(phi)
+>>>>>>> ad54f0d988afbd28d1fc6c8242256ea7e62c2f28

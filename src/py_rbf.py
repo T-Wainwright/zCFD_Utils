@@ -1,67 +1,70 @@
 import numpy as np
 
-# load data points
-aero_file = '../data/aero_nodes.xyz'
-struc_file = '../data/struc_nodes.xyz'
-pressure_file = '../data/pressure.dat'
-displacement_file = '../data/def.xyz'
-
-aero_nodes = np.loadtxt(aero_file,skiprows=1)
-struc_nodes = np.loadtxt(struc_file,skiprows=1)
-pressure = np.loadtxt(pressure_file,skiprows=1)
-displacements = np.loadtxt(displacement_file,skiprows=1)
-
-r0 = 5
-
-n_a = aero_nodes.shape[0]
-n_s = struc_nodes.shape[0]
-
-# Preallocate matrices
-A_as = np.ones((n_a,n_s+4))
-M_ss = np.zeros((n_s,n_s))
-P_s = np.ones((4,n_s))
-
-for i in range(n_s):
-    for j in range(n_s):
-        rad = (np.linalg.norm((struc_nodes[i]-struc_nodes[j])))/r0
-        M_ss[i][j] = ((1-rad)**4) * (4*rad+1) # Wendland C2
-    P_s[1:,i] = struc_nodes[i]
-
-for i in range(n_a):
-    for j in range(n_s):
-        rad = np.linalg.norm((aero_nodes[i]-struc_nodes[j]))
-        A_as[i][j+4] = rad
-    A_as[i][1:4] = aero_nodes[i]
-
-CssR = np.concatenate((P_s,M_ss))
-CssL = np.concatenate((np.zeros((4,4)),np.transpose(P_s)))
-
-Css = np.concatenate((CssL,CssR),axis=1)
-
-M_inv = np.linalg.pinv(M_ss)
-M_p = np.linalg.pinv(np.matmul(np.matmul(P_s,M_inv),np.transpose(P_s)))
-
-Top = np.matmul(np.matmul(M_p,P_s),M_inv)
-Bottom = M_inv - np.matmul(np.matmul(np.matmul(np.matmul(M_inv,np.transpose(P_s)),M_p),P_s),M_inv)
-
-B = np.concatenate((Top,Bottom))
-print(B.shape)
-
-H = np.matmul(A_as,B)
-print(H.shape)
-print(pressure.shape)
-
-U_ax = np.matmul(H,displacements[:,0])
-U_ay = np.matmul(H,displacements[:,1])
-U_az = np.matmul(H,displacements[:,2])
-
-f = open("../data/aero_2.xyz","w")
-f.write("{}\n".format(n_a))
-for i in range(n_a):
-    f.write("{} {} {}\n".format(U_ax[i],U_ay[i],U_az[i]))
+# Functions
 
 
+def generate_transfer_matrix(aero_nodes,struct_nodes,r0,polynomial=True):
+    # returns- H: (n_a,n_s) full transfer matrix between STRUCTURAL NODES and AERODYNAMIC NODES
+    n_a = len(aero_nodes[:, 0])
+    n_s = len(struct_nodes[:, 0])
+
+    if polynomial:
+        A_as = np.zeros((n_a, n_s+4))
+        P_s = np.ones((4, n_s))
+    else:
+        A_as = np.zeros((n_a, n_s))
+
+    M_ss = np.zeros((n_s, n_s))
+
+    for i in range(n_s):
+        for j in range(n_s):
+            rad = (np.linalg.norm((struct_nodes[i] - struct_nodes[j])))/r0
+            if rad <= 1.0:
+                M_ss[i][j] = ((1-rad)**4) * (4*rad+1)  # Wendland C2
+        if polynomial:
+            P_s[1:, i] = struct_nodes[i]
+
+    for i in range(n_a):
+        for j in range(n_s):
+            rad = np.linalg.norm((aero_nodes[i]-struct_nodes[j]))/r0
+            if rad <= 1.0:
+                if polynomial:
+                    A_as[i][j+4] = ((1-rad)**4) * (4*rad+1)  # Wendland C2
+                else:
+                    A_as[i][j] = ((1-rad)**4) * (4*rad+1)  # Wendland C2
+        if polynomial:
+            A_as[i][1:4] = aero_nodes[i]
+            A_as[i][0] = 1
+
+    M_inv = np.linalg.pinv(M_ss)
+    if polynomial:
+        # Equations 21 and 22 in Allen and Rendall
+        M_p = np.linalg.pinv(np.matmul(np.matmul(P_s, M_inv), np.transpose(P_s)))
+
+        Top = np.matmul(np.matmul(M_p, P_s), M_inv)
+        Bottom = M_inv - np.matmul(np.matmul(np.matmul(np.matmul(M_inv, np.transpose(P_s)), M_p), P_s), M_inv)
+
+        B = np.concatenate((Top, Bottom))
+
+        H = np.matmul(A_as, B)
+    else:
+        H = np.matmul(A_as, M_inv)
+    return H
 
 
+def interp_displacements(U_s, H):
+    # Interpolate structural displacements U_s to aerodynamic surface nodes
+    U_a = np.zeros((H.shape[0], U_s.shape[1]))
+
+    for i in range(U_s.shape[1]):
+        U_a[:, i] = np.matmul(H, U_s[:, i])
+    return U_a
 
 
+def interp_forces(F_a, H):
+    # Interpolate aerodynamic forces F_a to structural nodes
+    F_s = np.zeros((H.shape[1], F_a.shape[1]))
+
+    for i in range(F_a.shape[1]):
+        F_s[:, i] = np.matmul(np.transpose(H), F_s[:, i])
+    return F_s

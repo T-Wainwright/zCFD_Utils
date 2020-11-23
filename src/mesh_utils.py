@@ -310,14 +310,14 @@ class h5_mesh:
         f = h5py.File(fname,"r")
         g = f.get('mesh')
         
-        self.numFaces = int(g.attrs.get('numFaces')[0,0])
-        self.numCells = int(g.attrs.get('numCells')[0,0])
+        self.numFaces = int(g.attrs.get('numFaces'))
+        self.numCells = int(g.attrs.get('numCells'))
 
         self.cellFace = np.array(g.get('cellFace'))
         self.cellType = np.array(g.get('cellType'))
         self.faceBC = np.array(g.get('faceBC'))
         self.faceCell = np.array(g.get('faceCell'))
-        self.faceInfo = np.array(g.get('faceInfo'))
+        self.faceInfo = np.array(g.get('faceInfo')[0])
         self.faceNodes = np.array(g.get('faceNodes'))
         self.faceType = np.array(g.get('faceType'))
         self.nodeVertex = np.array(g.get('nodeVertex'))
@@ -374,7 +374,7 @@ class h5_mesh:
             print('Writing Face Info')
         fout.write('# Number of points per face \n')
         for i in range(n_f):
-            fout.write("{} \n".format(self.faceType[i]))
+            fout.write("{} \n".format(self.faceType[i][0]))
 
         if V:
             print('Writing Face Nodes')
@@ -565,10 +565,31 @@ class h5_mesh:
         os.system('rm rotate.LKE surface.xyz volume.xyz surface_deformations.xyz volume_deformations.xyz volume.xyz.meshdef def.xyz')
 
         
+# mesh = cba_mesh(fname='../../CBA_meshes/IEA_15MW/IEA_15MW_5M.blk',V=True)
+
+# f = open('../../CBA_meshes/IEA_15MW/IEA_15MW_5M.p3d',"w")
+
+# f.write('{}\n'.format(mesh.n_blocks))
+# for b in range(mesh.n_blocks):
+#     f.write('{} \t {} \t {}\n'.format(mesh.block[b].npts_i,mesh.block[b].npts_j,mesh.block[b].npts_k))
+
+# for b in range(mesh.n_blocks):
+#     for i in range(mesh.block[b].npts):
+#         f.write('{}\n'.format(mesh.block[b].X[i,0]))
+#     for i in range(mesh.block[b].npts):
+#         f.write('{}\n'.format(mesh.block[b].X[i,1]))
+#     for i in range(mesh.block[b].npts):
+#         f.write('{}\n'.format(mesh.block[b].X[i,2]))
+    
+
+# f.close()
+
 mesh = h5_mesh()
-mesh.load_zcfd('../../data/3D/IEA_15MW/IEA_15MW_5M.blk.h5')
-mesh.extractSurfaceFaces(5)
-mesh.extractSurfaceFaces(6)
+mesh.load_zcfd('../../CBA_meshes/IEA_15MW/IEA_15MW_Occluded_12M.cas.h5')
+mesh.writetec('../../CBA_meshes/IEA_15MW/IEA_15MW_Occluded_12M.cas.h5.plt')
+
+
+
 
 
 # mesh1 = cba_mesh('../../data/3D/IEA_15MW/IEA_15MW_1M.blk')

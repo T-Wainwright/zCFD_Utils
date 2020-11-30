@@ -376,8 +376,6 @@ class h5_mesh:
         fout.write('# Number of points per face \n')
         for i in range(n_f):
             fout.write("{} \n".format(self.faceType[i][0]))
-<<<<<<< HEAD
-=======
 
         if V:
             print('Writing Face Nodes')
@@ -404,7 +402,7 @@ class h5_mesh:
         if V:
             print('tecplot file written successfully')
 
-    def writetec_boundary(self,fname,V=True):
+    def write_results_tec(self,fname,results,V=True):
         # Write ZCFD mesh to tecplot FEPOLYHEDRON FORMAT
         if V:
             print('Writing tecplot mesh file: {}'.format(fname))
@@ -416,7 +414,7 @@ class h5_mesh:
         fout = open(fname,"w")
         if V:
             print('Writing Header Information')
-        fout.write("VARIABLES= \"X\" \"Y\" \"Z\" \"t\" \n")
+        fout.write("VARIABLES= \"X\" \"Y\" \"Z\" \"P\" \"Vx\" \"Vy\" \"Vz\" \"Density\"\n")
         fout.write("ZONE \n")
         fout.write("NODES = {} \n".format(n_v))                     # Number of Nodes
         fout.write("FACES = {} \n".format(n_f))                     # Number of faces
@@ -426,6 +424,7 @@ class h5_mesh:
         fout.write("ELEMENTS = {} \n".format(n_c))                  # Number of cells
         fout.write("DATAPACKING = BLOCK \n")                        # Data formatting- must be block for FEPOLYHEDRON
         fout.write("ZONETYPE = FEPOLYHEDRON \n")                    # Mesh type- FE polyhedron for zCFD
+        fout.write("VARLOCATION=([4,5,6,7,8]=CELLCENTERED)\n")
 
         if V:
             print('Writing Node Vertex Points')
@@ -439,12 +438,23 @@ class h5_mesh:
         for i in range(n_v):
             fout.write("{} \n".format(self.nodeVertex[i,2]))
 
+        for i in range(n_c):
+            fout.write("{} \n".format(results.dset['solution'][results.dset['globalToLocalIndex'][i]][0]))
+        for i in range(n_c):
+            fout.write("{} \n".format(results.dset['solution'][results.dset['globalToLocalIndex'][i]][1]))
+        for i in range(n_c):
+            fout.write("{} \n".format(results.dset['solution'][results.dset['globalToLocalIndex'][i]][2]))
+        for i in range(n_c):
+            fout.write("{} \n".format(results.dset['solution'][results.dset['globalToLocalIndex'][i]][3]))
+        for i in range(n_c):
+            fout.write("{} \n".format(results.dset['solution'][results.dset['globalToLocalIndex'][i]][4]))
+
+
         if V:
             print('Writing Face Info')
         fout.write('# Number of points per face \n')
         for i in range(n_f):
-            fout.write("{} \n".format(int(self.faceType[i][0])))
->>>>>>> ad54f0d988afbd28d1fc6c8242256ea7e62c2f28
+            fout.write("{} \n".format(self.faceType[i][0]))
 
         if V:
             print('Writing Face Nodes')
@@ -643,10 +653,41 @@ class h5_mesh:
 
         os.system('rm rotate.LKE surface.xyz volume.xyz surface_deformations.xyz volume_deformations.xyz volume.xyz.meshdef def.xyz')
 
-        
-# mesh = cba_mesh(fname='../../CBA_meshes/IEA_15MW/IEA_15MW_5M.blk',V=True)
+class zcfd_results():
+    
+    def __init__(self,fname):
+        f = h5py.File(fname,"r")
+        run = f.get('run')
+        print(run.attrs.keys())
+        self.attrs = {}
+        for attr in run.attrs.keys():
+            self.attrs[attr] = run.attrs.get(attr)[0]
 
-# f = open('../../CBA_meshes/IEA_15MW/IEA_15MW_5M.p3d',"w")
+        print(run.keys())
+        self.dset = {}
+        for dset in run.keys():
+            self.dset[dset] = np.array(run.get(dset))
+
+        print(self.attrs)
+        print(self.dset)
+        f.close()
+        
+
+# fname = '../../cases/IEA_15MW/Euler_dynamic/IEA_15_Euler_results.h5'
+fname = '../data/MDO_125K_results.h5'
+results = zcfd_results(fname)
+
+
+
+
+mesh = h5_mesh()
+mesh.load_zcfd('../data/MDO_125K.h5')
+mesh.write_results_tec('../data/MDO_125K.h5.plt',results)
+
+
+# mesh = cba_mesh(fname='../data/CT8_5M.blk',V=True)
+
+# f = open('../data/CT8_5M.p3d',"w")
 
 # f.write('{}\n'.format(mesh.n_blocks))
 # for b in range(mesh.n_blocks):
@@ -663,10 +704,7 @@ class h5_mesh:
 
 # f.close()
 
-mesh = h5_mesh()
-<<<<<<< HEAD
-mesh.load_zcfd('../../CBA_meshes/IEA_15MW/IEA_15MW_Occluded_12M.cas.h5')
-mesh.writetec('../../CBA_meshes/IEA_15MW/IEA_15MW_Occluded_12M.cas.h5.plt')
+
 
 
 
@@ -721,18 +759,13 @@ mesh.writetec('../../CBA_meshes/IEA_15MW/IEA_15MW_Occluded_12M.cas.h5.plt')
 # print(mesh2.block[15].connectivity)
 # print(mesh2.block[16].connectivity)
 # print(mesh2.block[17].connectivity)
-=======
-mesh.load_zcfd('../../data/3D/IEA_15MW/Single_Turbine_5M/IEA_15MW_5M.cas.h5')
-# mesh.load_zcfd('../data/CT0_250K.blk.h5')
-# mesh.writetec(fname='../../data/3D/IEA_15MW/Single_Turbine_5M/IEA_15MW_5M.cas.h5.plt')
->>>>>>> ad54f0d988afbd28d1fc6c8242256ea7e62c2f28
 
-print(mesh.cellZone[0])
+# print(mesh.cellZone[0])
 
-f = open('../data/zones.txt',"w")
-f.write('{}'.format(np.unique(mesh.cellZone)))
-f.close()
-print(np.unique(mesh.cellZone))
-mesh.writeh5('../data/IEA_15MW_5M.cas.h5')
+# f = open('../data/zones.txt',"w")
+# f.write('{}'.format(np.unique(mesh.cellZone)))
+# f.close()
+# print(np.unique(mesh.cellZone))
+# mesh.writeh5('../data/IEA_15MW_5M.cas.h5')
 
 

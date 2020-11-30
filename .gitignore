@@ -2,9 +2,8 @@
 *.plt
 *.lke
 *.LKE
-<<<<<<< HEAD
+*.csv
 *.p3d
-=======
 *.xyz
 *.dat
->>>>>>> ad54f0d988afbd28d1fc6c8242256ea7e62c2f28
+*.png

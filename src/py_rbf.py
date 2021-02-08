@@ -3,10 +3,134 @@ import numpy as np
 # Functions
 
 
+class UoB_coupling():
+    def __init__(self):
+        pass
+
+    def load_struct(self, fname):
+        # Load beamstick model
+        self.struct_nodes = np.loadtxt(fname, skiprows=1)
+        self.n_s = len(self.struct_nodes[:, 0])
+
+    def load_modes(self):
+        # Load data dumped from atom- future use matlab API
+        self.Kmodal_inv = np.loadtxt('Kmodal_inv.dat')
+        self.Eigvec = np.loadtxt('Eigvec.dat')
+        self.nEigval = self.Eigvec.shape[1]
+
+    def process_face(self):
+        # Process face information into more easily distinguishable dictionary format
+        self.face = {}
+        self.aero_centres = np.zeros((self.n_f, 3))
+        for f in range(self.n_f):
+            self.face[f] = {}
+            for i in range(4):
+                index = f * 4 + i
+                self.face[f][i] = {}
+                self.face[f][i]['id'] = self.face_nodes[index]
+                self.face[f][i]['index_id'] = self.node_labels.index(self.face_nodes[index]) + 1
+                self.face[f][i]['coord'] = self.aero_nodes[self.node_labels.index(self.face_nodes[index])]
+            self.face[f]['norm'] = np.cross([np.array(self.face[f][0]['coord']) - np.array(self.face[f][1]['coord'])], [np.array(self.face[f][0]['coord']) - np.array(self.face[f][3]['coord'])])[0]
+            self.face[f]['unit_norm'] = self.face[f]['norm'] / np.linalg.norm(self.face[f]['norm'])
+            self.face[f]['centre'] = (self.face[f][0]['coord'] + self.face[f][1]['coord'] + self.face[f][2]['coord'] + self.face[f][3]['coord']) / 4
+            self.aero_centres[f] = self.face[f]['centre']
+
+    def generate_displacement_transfer_matrix(self, r0, polynomial):
+        # Calculate displacement transfer matrix using full RBF
+        self.H_u = generate_transfer_matrix(self.aero_nodes, self.struct_nodes, r0, 'c2', polynomial)
+
+    def generate_pressure_transfer_matrix(self, r0, polynomial):
+        # Calculate pressure transfer matrix using full RBF
+        self.H_p = generate_transfer_matrix(self.aero_centres, self.struct_nodes, r0, 'c2', polynomial)
+
+    def calculate_pressure_force(self, p):
+        # Calculate pressure forces acting normal the the blade surface- add datum pressure to this step in future.
+        pressure_force = np.zeros((self.n_f, 3))
+        for f in range(self.n_f):
+            pressure_force[f, :] = p[f] * self.face[f]['norm']
+        return pressure_force
+
+    def interp_forces(self, F_a):
+        # Interpolate aerodynamic forces to blade
+        F_s = interp_forces(F_a, self.H_p)
+        return F_s
+
+    def interp_displacements(self, U_s):
+        # Interpolate strucutral displacements to aerodynamic centre
+        U_a = interp_displacements(U_s, self.H_u)
+        for i in range(3):
+            self.aero_nodes[:, i] = self.aero_nodes[:, i] + U_a[:, i]
+        np.savetxt('deformed.csv', self.aero_nodes, delimiter=",")
+        return U_a
+
+    def deform_struct(self, F_s):
+        # Solve modal model from data generated from ATOM.#
+
+        # Rearrange F_s to match ATOM coordinate system - to change with new mesh.
+        # x positive spanwise
+        # y positive downwards
+        # z positive edgewise
+
+        F_s_atom = np.zeros_like(F_s)
+        F_s_atom[:, 0] = F_s[:, 1]
+        F_s_atom[:, 1] = -F_s[:, 2]
+        F_s_atom[:, 2] = -F_s[:, 0]
+        # Reshape F_s- zeros for discounting moment forces for now
+        F_s_atom = np.concatenate((F_s_atom, np.zeros_like(F_s_atom)), axis=1)
+        F_s_atom = F_s_atom.flatten(order='C')
+
+        # Convert Nodal forces to modal forces
+        FModal = np.matmul(np.transpose(self.Eigvec[:, 0:self.nEigval]), F_s_atom[6:])
+
+        QDisp = np.matmul(self.Kmodal_inv, FModal)
+
+        Disp = np.zeros(self.Eigvec.shape[0])
+
+        # Solve modal model
+        for i in range(self.nEigval):
+            Disp = np.add(Disp, (QDisp[i] * self.Eigvec[:, i]))
+
+        Disp = np.concatenate((np.zeros(6), Disp))
+
+        Disp = np.reshape(Disp, (self.n_s, 6), order='C')
+
+        # Convert the coordinate systems back - To change with new mesh.
+        # x negative edgewise (positive in flow direction)
+        # y positive spanwise
+        # z upwards
+
+        Disp_zcfd = np.zeros_like(Disp)
+
+        Disp_zcfd[:, 0] = Disp[:, 2]
+        Disp_zcfd[:, 1] = -Disp[:, 0]
+        Disp_zcfd[:, 2] = -Disp[:, 1]
+
+        # Adjust scale factor here
+        return(Disp_zcfd * 1.0e-1)
+
+    def write_deformed_struct(self, U_s):
+        # Dump out record of deformed structure
+        f = open("deformed_struct.dat", 'w')
+        for i in range(self.n_s):
+            f.write('{} \t {} \t {}\n'.format(U_s[i, 0], U_s[i, 1], U_s[i, 2]))
+        f.close()
+
+    def update_surface(self, U_a):
+        # Update surface normals after a deformation
+        for i in range(3):
+            self.aero_nodes[:, i] = self.aero_nodes[:, i] + U_a[:, i]
+
+        for f in range(self.n_f):
+            for i in range(4):
+                index = f * 4 + i
+                self.face[f][i]['coord'] = self.aero_nodes[self.node_labels.index(self.face_nodes[index])]
+            self.face[f]['norm'] = np.cross([np.array(self.face[f][0]['coord']) - np.array(self.face[f][1]['coord'])], [np.array(self.face[f][0]['coord']) - np.array(self.face[f][3]['coord'])])[0]
+
+
 def generate_transfer_matrix(aero_nodes, struct_nodes, r0, rbf='c2', polynomial=True):
     # returns- H: (n_a,n_s) full transfer matrix between STRUCTURAL NODES and AERODYNAMIC NODES
     n_a = len(aero_nodes[:, 0])
-    n_s = len(struct_nodes[:, 0])   
+    n_s = len(struct_nodes[:, 0])
 
     switcher = {'c0': c0, 'c2': c2, 'c4': c4, 'c6': c6}
     rbf = switcher.get(rbf)
@@ -42,15 +166,9 @@ def generate_transfer_matrix(aero_nodes, struct_nodes, r0, rbf='c2', polynomial=
             A_as[i][1:4] = aero_nodes[i]
             A_as[i][0] = 1
 
-    np.savetxt("../data/M_ss.csv", M_ss, delimiter=",")
-    # np.savetxt("../data/P_s.csv", P_s, delimiter=",")
-    np.savetxt("../data/A_as.csv", A_as, delimiter=",")
-
-    # Invert M matrix- Moore-Penrose inversion
     M_inv = np.linalg.pinv(M_ss)
-
     if polynomial:
-        # Equations 21 and 22
+        # Equations 21 and 22 in Allen and Rendall
         M_p = np.linalg.pinv(np.matmul(np.matmul(P_s, M_inv), np.transpose(P_s)))
 
         Top = np.matmul(np.matmul(M_p, P_s), M_inv)
@@ -59,12 +177,6 @@ def generate_transfer_matrix(aero_nodes, struct_nodes, r0, rbf='c2', polynomial=
         B = np.concatenate((Top, Bottom))
 
         H = np.matmul(A_as, B)
-
-
-        L = np.concatenate((np.zeros((4,4)),np.transpose(P_s)))
-        R = np.concatenate((P_s,M_ss))
-        Css = np.concatenate((L,R),axis=1)
-        H = np.matmul(A_as, np.linalg.pinv(Css))
     else:
         H = np.matmul(A_as, M_inv)
     return H

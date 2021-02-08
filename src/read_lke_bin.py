@@ -190,9 +190,5 @@ phi_inv = np.linalg.pinv(phi)
 
 print(phi_inv.shape)
 
-<<<<<<< HEAD
 print(FILE_DATA)
 
-=======
-print(phi)
->>>>>>> ad54f0d988afbd28d1fc6c8242256ea7e62c2f28

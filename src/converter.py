@@ -1,6 +1,5 @@
 import numpy as np
 import h5py
-import multiprocessing as mp
 
 """ 
 Converter for CBA mesh to zCFD h5 format 

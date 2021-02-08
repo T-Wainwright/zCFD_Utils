@@ -145,22 +145,22 @@ class cba_mesh:
             for i in self.Common_faces:
                 print('block1 = {} \t face1 = {} \t block2 = {} \t face2 = {}'.format(self.Common_faces[i]['block1'],self.Common_faces[i]['face1'],self.Common_faces[i]['block2'],self.Common_faces[i]['face2']))
       
-    def h5_conv(self):
-        # Convert CBA format multiblock mesh to zcfd h5 format
-        if self.V:
-            print('Converting CBA to H5 format')
-        h5 = h5_mesh(ncell=self.ncell, nface=self.nface)
-        f_offset = 0
-        c_offset = 0
-        p_offset = 0
-        ghostID = self.ncell
-        for i in self.block:
-            self.block[i].conv_h5_data(f_offset,c_offset,p_offset,ghostID,h5)
-            f_offset = f_offset + self.block[i].nface
-            c_offset = c_offset + self.block[i].ncell
-            p_offset = p_offset + self.block[i].npts
-            ghostID = ghostID + self.block[i].ghostID
-        return(h5)
+    # def h5_conv(self):
+    #     # Convert CBA format multiblock mesh to zcfd h5 format
+    #     if self.V:
+    #         print('Converting CBA to H5 format')
+    #     h5 = h5_mesh(ncell=self.ncell, nface=self.nface)
+    #     f_offset = 0
+    #     c_offset = 0
+    #     p_offset = 0
+    #     ghostID = self.ncell
+    #     for i in self.block:
+    #         self.block[i].conv_h5_data(f_offset,c_offset,p_offset,ghostID,h5)
+    #         f_offset = f_offset + self.block[i].nface
+    #         c_offset = c_offset + self.block[i].ncell
+    #         p_offset = p_offset + self.block[i].npts
+    #         ghostID = ghostID + self.block[i].ghostID
+    #     return(h5)
     
     def writetec(self,fname):
         # Convert CBA mesh to tecplot visualisation format
@@ -188,107 +188,124 @@ class cba_mesh:
                 fout.write('{} \t {} \t {} \n'.format(int(self.block[i].connectivity[j,0]),int(self.block[i].connectivity[j,1]),int(self.block[i].connectivity[j,2])))
         return
 
-    def show_connectivity(self):
-        # Show block connectivity
-        for i in self.block:
-            print('{} \t'.format(i))
-            for j in range(6):
-                print('{} {} {} \t'.format(int(self.block[i].connectivity[j,0]),int(self.block[i].connectivity[j,1]),int(self.block[i].connectivity[j,2])))
-            print('\n')
-        return
+    # def show_connectivity(self):
+    #     # Show block connectivity
+    #     for i in self.block:
+    #         print('{} \t'.format(i))
+    #         for j in range(6):
+    #             print('{} {} {} \t'.format(int(self.block[i].connectivity[j,0]),int(self.block[i].connectivity[j,1]),int(self.block[i].connectivity[j,2])))
+    #         print('\n')
+    #     return
 
-    def stack_rotor(self):
-        print('Stacking Rotor')
+    # def stack_rotor(self):
+    #     print('Stacking Rotor')
+
+    def write_p3d(self,fname):
+        f = open(fname,"w")
+
+        f.write('{}\n'.format(self.n_blocks))
+        for b in range(self.n_blocks):
+            f.write('{} \t {} \t {}\n'.format(self.block[b].npts_i,self.block[b].npts_j,self.block[b].npts_k))
+
+        for b in range(self.n_blocks):
+            for i in range(self.block[b].npts):
+                f.write('{}\n'.format(self.block[b].X[i,0]))
+            for i in range(self.block[b].npts):
+                f.write('{}\n'.format(self.block[b].X[i,1]))
+            for i in range(self.block[b].npts):
+                f.write('{}\n'.format(self.block[b].X[i,2]))
+        f.close()
 
 
-class cba_block:
-    def __init__(self):
-        # Integers
-        self.blockID = 0                # Block Number
-        self.npts = 0                   # Number of points in block
-        self.npts_i = 0                 # Number of points in i direction
-        self.npts_j = 0                 # Number of points in j direction
-        self.npts_k = 0                 # Number of points in k direction
 
-        self.nface = 0                  # Number of faces
-        self.nface_i = 0                # Number of i plane faces
-        self.nface_j = 0                # Number of j plane faces
-        self.nface_k = 0                # Number of k plane faces
+# class cba_block:
+#     def __init__(self):
+#         # Integers
+#         self.blockID = 0                # Block Number
+#         self.npts = 0                   # Number of points in block
+#         self.npts_i = 0                 # Number of points in i direction
+#         self.npts_j = 0                 # Number of points in j direction
+#         self.npts_k = 0                 # Number of points in k direction
 
-        self.ncell = 0                  # Number of cells
+#         self.nface = 0                  # Number of faces
+#         self.nface_i = 0                # Number of i plane faces
+#         self.nface_j = 0                # Number of j plane faces
+#         self.nface_k = 0                # Number of k plane faces
 
-        # Arrays
-        self.X = np.array((0,3))        # Coordinate points
-        self.falsefaces = []            
-        self.falsefaces_log = [False,False,False,False,False,False]
+#         self.ncell = 0                  # Number of cells
 
-        # Dictionaries
-        self.common_faces = {0:{},1:{},2:{},3:{},4:{},5:{}}
-        self.face_bounds = {}
-        self.cell_bounds = {}
+#         # Arrays
+#         self.X = np.array((0,3))        # Coordinate points
+#         self.falsefaces = []            
+#         self.falsefaces_log = [False,False,False,False,False,False]
 
-        # Block connectivity
-        self.connectivity = {}
-        # imintag   neighbour   orientation
-        # imaxtag   neighbour   orientation
-        # jmintag   neighbour   orientation
-        # jmaxtag   neighbour   orientation
-        # kmintag   neighbour   orientation
-        # kmaxtag   neighbour   orientation
+#         # Dictionaries
+#         self.common_faces = {0:{},1:{},2:{},3:{},4:{},5:{}}
+#         self.face_bounds = {}
+#         self.cell_bounds = {}
 
-        # -1 = Solid surface (Include in loads calc)
-        # 0 = Solid surface
-        # 1 = Farfield
-        # 2 = Internal Face         Only these require neighbour and orientation flags
-        # 3 = Periodic Downstream   Only these require neighbour and orientation flags
-        # 4 = Periodic Upstream     Only these require neighbour and orientation flags
+#         # Block connectivity
+#         self.connectivity = {}
+#         # imintag   neighbour   orientation
+#         # imaxtag   neighbour   orientation
+#         # jmintag   neighbour   orientation
+#         # jmaxtag   neighbour   orientation
+#         # kmintag   neighbour   orientation
+#         # kmaxtag   neighbour   orientation
 
-        # Orientation flags:
+#         # -1 = Solid surface (Include in loads calc)
+#         # 0 = Solid surface
+#         # 1 = Farfield
+#         # 2 = Internal Face         Only these require neighbour and orientation flags
+#         # 3 = Periodic Downstream   Only these require neighbour and orientation flags
+#         # 4 = Periodic Upstream     Only these require neighbour and orientation flags
 
-        # 1 = Connected to i min face
-        # 2 = Connected to i max face
-        # 3 = Connected to j min face
-        # 4 = Connected to j max face
-        # 5 = Connected to k min face
-        # 6 = Connected to k max face
+#         # Orientation flags:
+
+#         # 1 = Connected to i min face
+#         # 2 = Connected to i max face
+#         # 3 = Connected to j min face
+#         # 4 = Connected to j max face
+#         # 5 = Connected to k min face
+#         # 6 = Connected to k max face
         
 
-    def process_data(self):
-        # Process individual block properties
-        print('Assigning block data')
+#     def process_data(self):
+#         # Process individual block properties
+#         print('Assigning block data')
         
 
-        # Number of points for each plane
-        self.jk_pts = (self.npts_j - 1) * (self.npts_k - 1)
-        self.ik_pts = (self.npts_i - 1) * (self.npts_k - 1)
-        self.ij_pts = (self.npts_i - 1) * (self.npts_j - 1)
+#         # Number of points for each plane
+#         self.jk_pts = (self.npts_j - 1) * (self.npts_k - 1)
+#         self.ik_pts = (self.npts_i - 1) * (self.npts_k - 1)
+#         self.ij_pts = (self.npts_i - 1) * (self.npts_j - 1)
 
-        # Calculate number of false planes
-        false_i = 0
-        false_j = 0 
-        false_k = 0
+#         # Calculate number of false planes
+#         false_i = 0
+#         false_j = 0 
+#         false_k = 0
 
-        for f in self.falsefaces:
-            f = int(f)
-            # self.BC_condition[f] = self.BC_condition[f] + f_action[f]
-            self.falsefaces_log[f] = True
+#         for f in self.falsefaces:
+#             f = int(f)
+#             # self.BC_condition[f] = self.BC_condition[f] + f_action[f]
+#             self.falsefaces_log[f] = True
 
-            if f == 0 or f == 1:
-                false_i = false_i + 1
-            elif f == 2 or f == 3:
-                false_j = false_j + 1
-            elif f == 4 or f == 5:
-                false_k = false_k + 1
+#             if f == 0 or f == 1:
+#                 false_i = false_i + 1
+#             elif f == 2 or f == 3:
+#                 false_j = false_j + 1
+#             elif f == 4 or f == 5:
+#                 false_k = false_k + 1
         
-        self.nface_i = (self.npts_i-false_i) * self.jk_pts
-        self.nface_j = (self.npts_j-false_j) * self.ik_pts
-        self.nface_k = (self.npts_k-false_k) * self.ij_pts
+#         self.nface_i = (self.npts_i-false_i) * self.jk_pts
+#         self.nface_j = (self.npts_j-false_j) * self.ik_pts
+#         self.nface_k = (self.npts_k-false_k) * self.ij_pts
 
-        self.nface = self.nface_i + self.nface_j + self.nface_k
-        self.ncell = (self.npts_i - 1) * (self.npts_j - 1) * (self.npts_k - 1)
-        return
+#         self.nface = self.nface_i + self.nface_j + self.nface_k
+#         self.ncell = (self.npts_i - 1) * (self.npts_j - 1) * (self.npts_k - 1)
+#         return
 
-        
+   
 class h5_mesh:
     def __init__(self,ncell=0,nface=0):
         # H5 Attributes
@@ -553,7 +570,6 @@ class h5_mesh:
         return
 
     def extractHaloFaces(self):
-
         # Count number of halo cells in the mesh
         max_cell_ID = max(self.faceCell[:,1])
         num_halo_cells = max_cell_ID - self.numCells
@@ -620,7 +636,6 @@ class h5_mesh:
         # self.X_def = self.X_s
 
     def translate_surface(self,vec):
-
         for i in range(self.n_s):
             self.X_def[i,0] = vec[0]
             self.X_def[i,1] = vec[1]

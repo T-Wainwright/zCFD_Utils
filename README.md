@@ -12,11 +12,21 @@ tom.wainwright@bristol.ac.uk
 * mesh_utils:
   * Unpack and manipulate both ZCFD and CBA meshes
   * Convert meshes to tecplot .plt format
-  * Stitch together multible mesh blocks/ multiblock meshes
   * Extract surfaces for RBF mesh deformation
-  * Convert single block CBA meshes into zcfd format
-* converter
-  * Convert multiblock CBA meshes into zcfd format
+  * Convert single and multiblock CBA meshes into zcfd format
+  * Convert CBA meshes into plot3D format to import to pointwise
+
+* zConverge
+  * Donwload and plot zCFD report file to track convergence from remote cluster
+
+* test_suite
+  * Contains some demos of how to use the various functions described above
+
+* UoB_coupling
+  * Open source python script for running custom FSI scheme
+
+* py_rbf
+  * python implementation of RBF mesh deformation- currently only uses full RBF and is applied for stuctural-aero surface coupling, not volume mesh deformation
 
 * Examples included:
   * Omesh.blk

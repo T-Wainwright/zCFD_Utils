@@ -1,3 +1,5 @@
+# RBF surface deformation tester script
+
 import numpy as np
 import pandas as pd
 import py_rbf
@@ -50,8 +52,4 @@ for i in range(n_s):
     f.write('{} {} {} \n'.format(F_s[i][0], F_s[i][1], F_s[i][2]))
 f.close()
 
-print(F_s.shape)
-
 print('finished')
-
-Test = 'test test'

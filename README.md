@@ -1,5 +1,5 @@
 # zCFD_Utils
-Utilities for working with zCFD Solver
+Utilities and tutorials for working with zCFD Solver
 
 Tom Wainwright
 
@@ -49,3 +49,13 @@ tom.wainwright@bristol.ac.uk
     * 3D
     * Caradonna-Tung rotor, 0 &deg
     * CH- Mesh attached topology with H expansion blocks
+
+## Tutorial pages
+---
+* Quick start guide
+  
+  *  *Note this assumes 0 experience working with ANY CFD solver, and is intended for undergraduate/ graduate level students using zCFD for the first time.*
+
+* Mesh description notebook
+  
+  An interactive notebook for understanding the zCFD mesh format, with demonstrations of some tools which can be used along side it. The notebook requires `h5py` and `numpy` modules to function. The mesh used as a demonstration can be found in the `data` directory.

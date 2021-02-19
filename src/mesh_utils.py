@@ -1059,10 +1059,11 @@ class zCFD_mesh:
         if self.V:
             print('Writing Face Nodes')
         fout.write('# Nodes making up each face \n')
+        index = 0
         for i in range(n_f):
             n_points = int(self.faceType[i])
             for j in range(n_points):
-                index = i * n_points + j
+                index = index + j
                 fout.write("{} ".format(self.faceNodes[index, 0] + 1))
             fout.write("\n")
 

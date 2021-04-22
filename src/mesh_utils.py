@@ -1004,6 +1004,11 @@ class zCFD_mesh:
         self.faceType = np.array(g.get('faceType'))
         self.nodeVertex = np.array(g.get('nodeVertex'))
 
+        # create additional faceIndex dataset:
+        self.faceIndex = np.zeros_like(self.faceType)
+        for i in range(self.numFaces - 1):
+            self.faceIndex[i + 1] = self.faceType[i + 1] + self.faceIndex[i]
+
         if self.V:
             print('zCFD mesh successfully loaded ')
             print('nCells= {} \t nFaces= {}'.format(self.numCells, self.numFaces))
@@ -1331,6 +1336,34 @@ class zCFD_mesh:
 
         os.system('rm rotate.LKE surface.xyz volume.xyz surface_deformations.xyz volume_deformations.xyz volume.xyz.meshdef def.xyz')
 
+    def get_surface_nodes(self, surfaceID, fname):
+        # Find faceID's with zone tag specified
+        surface_faces = np.where(self.faceInfo[:, 0] == surfaceID)[0]
+
+        # find all the nodes making up the face
+        n_surface_nodes = np.sum(self.faceType[surface_faces])
+        surface_node_vertex = np.zeros([n_surface_nodes])
+
+        index = 0
+        for f in surface_faces:
+            for i in range(self.faceType[f][0]):
+                surface_node_vertex[index] = self.faceNodes[self.faceIndex[f] + i]
+                index = index + 1
+        
+        # sort these to only get unique nodes
+        unique_vertex = np.unique(surface_node_vertex)
+
+        # get vertex points for unique nodes
+        surface_nodes = np.zeros([len(unique_vertex), 3])
+        for i in range(len(unique_vertex)):
+            surface_nodes[i, :] = self.nodeVertex[int(unique_vertex[i]), :]
+
+        # print surface nodes
+        f = open(fname, "w")
+        # f.write("{}\n".format(len(surface_nodes[:,0])))
+        for nodes in surface_nodes:
+            f.write("{} \t {} \t {} \n".format(nodes[0], nodes[1], nodes[2]))
+
 
 class zcfd_results():
     # zCFD results data class, function needs to be called in order to create tecplot results file
@@ -1394,3 +1427,6 @@ def check_and_replace(mesh):
             print('{} \\ {}'.format(i, len(node_map.keys())))
             mesh.sortnodes(node_map[f], f)
             i = i + 1
+
+zmesh = zCFD_mesh('../cases/Mexico/Meshes/Mexico_RANS_10M.cas.h5')
+zmesh.get_surface_nodes(4, 'test.dat')

@@ -6,7 +6,7 @@ from paramiko import SSHClient
 from scp import SCPClient
 
 # remote path and local paths
-remote_path1 = 'scratch/jobs/zcfd/CT/M0.225_Validation/CT8_M0225_report.csv'  # Path to remote data
+remote_path1 = 'scratch/jobs/zcfd/Mexico/Mexico_SST_report.csv'  # Path to remote data
 local_path = '../data/'  # Path to where you want data stored
 
 # Set up ssh link
@@ -17,10 +17,10 @@ scp = SCPClient(ssh.get_transport())
 
 # Download and load report file
 scp.get(remote_path1, local_path=local_path)
-data = pd.read_table('../data/CT8_M0225_report.csv', delimiter=' ')
+data = pd.read_table('../data/Mexico_SST_report.csv', delimiter=' ')
 
 # Plot convergence data
-plt.plot(data.Cycle, data["rhoOmega"], markevery=100)
+plt.plot(data.Cycle, data["rhoV[0]"], markevery=100)
 
 plt.xlabel('Cycle')
 plt.ylabel('rho')

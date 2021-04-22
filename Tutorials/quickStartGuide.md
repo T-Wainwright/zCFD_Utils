@@ -1,5 +1,10 @@
 # Quick start zCFD guide
 
+This guide is intended for those picking up zCFD for the first time without any prior knowledge of experience with CFD solvers. It should get you to a point where you can run your first jobs both locally, and on a cluster, then view and post process your results, both locally, and from a cluster.
+
+## The zCFD virtual environment
+---
+
 zCFD runs in it's own python virtual environment. This means it should be fully self contained, with all modules and libraries shipped as is. In order to launch the virtual environment, run:
 
 ```
@@ -104,3 +109,69 @@ In the paraview GUI, select `connect` in the network bar, bringing up the  *Choo
 If successful the pipeline browser icon should change from *builtin:* to your local server name. Additionally the command window where zCFD is running should have updated to read `Client connected.`
 
 In the `tools` menu select `manage plugins`, and load `zCFDReader` from the remote plugins menu. You should now be able to load native zCFD .h5 mesh files into paraview for visualisation.
+
+## Paraview Connect
+
+---
+
+You can also use the paraview client/ server setup to remotely acces results on a cluster without having to download them to your local machine. Here is a step by step guide on how to set this up:
+
+### Prerequisits:
+
+1. Upload a version of zCFD to your remote cluster
+2. Setup a keyless ssh connection to your remote cluster: https://linuxize.com/post/how-to-setup-passwordless-ssh-login/
+3. Clone the paraview connect repository to your local machine:
+   https://github.com/zenotech/ParaViewConnect
+4. Locally install the version of paraview shipped with zCFD (version can be found in `zcfd/lib/paraview-VERSION)`
+
+## Setting up local client
+
+### Linux
+In the `ParaViewConnect\scripts` directory run:
+
+```
+./create_virtualenv.bsh /path/to/ParaView/bin/pvpython
+```
+From the `share` directory, copy `servers.pvsc` to your local paraview config directory (located at `~./config/ParaView`). **This will overwrite any existing server setups you have created, but it will also setup a localhost server for zCFDReader**
+
+Open up ParaView GUI, and click connect, you should see the get the following dialogue box:
+
+Select `remote`, then enter the following information:
+
+| Prompt | Input | 
+| ------ | -----: |
+| Server Port:| *Whatever server port you want to use, 11111 is fine*
+| launcher location:| `$FULL_PATH_TO_PARAVIEWCONNECT/scripts`
+| user@hostname:| *login credentals for cluster e.g. ab12345@bc4login.acrc.bris.ac.uk*
+| Remote Paraview path:| `$FULL_PATH_TO_REMOTE_ZCFD/bin`
+| No of tasks:| *Number of cores to use, 1 is fine to start*
+| mpiexec:| `mpiexec.hydra`
+| Shell cmd prefix:| `source $FULL_PATH_TO_REMOTE_ZCFD/bin/activate;`
+
+Note the ';' at the end of the shell cmd prefix.
+
+After this click 'ok', and you sould connect automatically (remember to turn on any VPN you require to gain keyless access to the cluster). You can validate this by clicking `open`, and you should find yourself in your root directory on a login node.
+
+### Windows
+From the root folder run `scripts\create_virtualenv.bat`. Note note in `create_virtualenv.bat` you may need to specify that the virtual environement uses python 2.7 by setting:
+
+```
+virtualenv --python=python2.7 pvconnect-py27
+```
+Fire up paraview GUI, and load servers from `servers-windows.pvsc` in the `share` directory. Note here you need to load the windows version, since this file contains the commands to launch the server (which will be different for each OS). 
+
+Click connect and select `remote`, then enter the following information:
+
+| Prompt | Input | 
+| ------ | -----: |
+| Server Port:| *Whatever server port you want to use, 11111 is fine*
+| launcher location:| `$FULL_PATH_TO_PARAVIEWCONNECT/`
+| user@hostname:| *login credentals for cluster e.g. ab12345@bc4login.acrc.bris.ac.uk*
+| Remote Paraview path:| `$FULL_PATH_TO_REMOTE_ZCFD/bin`
+| No of tasks:| *Number of cores to use, 1 is fine to start*
+| mpiexec:| `mpiexec.hydra`
+| Shell cmd prefix:| `source $FULL_PATH_TO_REMOTE_ZCFD/bin/activate;`
+
+Note the difference in the launcher location to the linux version. 
+
+If python is having issues finding the pvconnect module, the folder can be copied into the scripts folder, or into the site-packages folder for the virtual environment.

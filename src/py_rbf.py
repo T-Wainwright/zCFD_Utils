@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.io
+import h5py
 
 
 # Functions
@@ -7,20 +8,67 @@ import scipy.io
 class UoB_coupling():
 
     def __init__(self):
-        self.ModalStruct = scipy.io.loadmat('ModalModel.mat')['ModalStruct']
-        self.BladeFE = scipy.io.loadmat('Blade_FE.mat')
+        pass
 
     def load_struct(self, fname):
+        print('Loading FE structural data from {}'.format(fname))
+        self.BladeFE = scipy.io.loadmat(FE_fname)
+
         self.struct_nodes = self.BladeFE['BeamAxis_123'][0][0]
         self.n_s = self.struct_nodes.shape[0]
 
-    def load_modes(self):
+    def load_modes(self, fname):
+        print('Loading Modal data from {}'.format(fname))
+        self.ModalStruct = scipy.io.loadmat(fname)['ModalStruct']
+
         self.nEigval = self.ModalStruct['nEigval'][0][0][0][0]
         self.Eigvec = self.ModalStruct['Eigvec'][0][0]
         self.KmodalInv = self.ModalStruct['KmodalInv'][0][0]
 
+    def load_aeromesh(self, fname, fsi_zone):
+        print('obtaining face information from h5 mesh file')
+        h5mesh = h5py.File(fname + '.h5')
+
+        # extract required data from h5 file
+        numFaces = int(h5mesh['mesh'].attrs.get('numFaces'))
+
+        faceInfo = np.array(h5mesh['mesh']['faceInfo'])
+        faceType = np.array(h5mesh['mesh']['faceType'])
+        faceNodes = np.array(h5mesh['mesh']['faceNodes'])
+        nodeVertex = np.array(h5mesh['mesh']['nodeVertex'])
+
+        faceIndex = np.zeros_like(faceInfo[:, 0])
+
+        for i in range(numFaces - 1):
+            faceIndex[i + 1] = faceType[i + 1] + faceIndex[i]
+
+        # find faces with tag fsi_zone
+        fsi_faces = np.where(faceInfo[:, 0] == fsi_zone)[0]
+
+        self.face = {}
+        self.n_f = len(fsi_faces)
+
+        # process face dictionary
+        for f in range(self.n_f):
+            self.face[f] = {}
+            faceID = fsi_faces[f]
+            n_faceNodes = faceInfo[fsi_faces[f], 0]
+            self.face[f]['n_faceNodes'] = n_faceNodes
+            for i in range(n_faceNodes):
+                self.face[f][i] = {}
+                nodeID = faceNodes[faceIndex[faceID] + i][0]
+                self.face[f][i]['nodeID'] = nodeID
+                self.face[f][i]['coord'] = nodeVertex[nodeID]
+            self.face[f]['norm'] = -np.cross([np.array(self.face[f][0]['coord']) - np.array(self.face[f][1]['coord'])], [np.array(self.face[f][0]['coord']) - np.array(self.face[f][3]['coord'])])[0]
+            self.face[f]['norm'] = -np.cross([np.array(self.face[f][0]['coord']) - np.array(self.face[f][1]['coord'])], [np.array(self.face[f][0]['coord']) - np.array(self.face[f][3]['coord'])])[0]
+            self.face[f]['unit_norm'] = self.face[f]['norm'] / np.linalg.norm(self.face[f]['norm'])
+            self.face[f]['centre'] = np.mean(np.array([self.face[f][i]['coord'] for i in range(self.face[f]['n_faceNodes'])]), axis=0)
+
+        print(self.n_f)
+
     def process_face(self):
         # Process face information into more easily distinguishable dictionary format
+        print('obtaining face information from solver methods')
         self.face = {}
         self.aero_centres = np.zeros((self.n_f, 3))
         for f in range(self.n_f):
@@ -87,16 +135,16 @@ class UoB_coupling():
 
         Disp = np.reshape(Disp, (self.n_s, 6), order='C')
 
-        # Convert the coordinate systems back
+        # Convert the coordinate systems back - discontinued since meshes now have correct coordinate system
 
-        Disp_zcfd = np.zeros_like(Disp)
+        # Disp_zcfd = np.zeros_like(Disp)
 
-        Disp_zcfd[:, 0] = -Disp[:, 2]
-        Disp_zcfd[:, 1] = Disp[:, 0]
-        Disp_zcfd[:, 2] = -Disp[:, 1]
+        # Disp_zcfd[:, 0] = -Disp[:, 2]
+        # Disp_zcfd[:, 1] = Disp[:, 0]
+        # Disp_zcfd[:, 2] = -Disp[:, 1]
 
         # Adjust scale factor here
-        return(Disp_zcfd * 1.0e-0)
+        return(Disp[:, :2] * 1.0e-0)
 
     def write_deformed_struct(self, U_s):
         # Dump out record of deformed structure

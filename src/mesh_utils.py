@@ -1427,6 +1427,3 @@ def check_and_replace(mesh):
             print('{} \\ {}'.format(i, len(node_map.keys())))
             mesh.sortnodes(node_map[f], f)
             i = i + 1
-
-zmesh = zCFD_mesh('../cases/Mexico/Meshes/Mexico_RANS_10M.cas.h5')
-zmesh.get_surface_nodes(4, 'test.dat')

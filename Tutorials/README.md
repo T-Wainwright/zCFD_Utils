@@ -175,3 +175,35 @@ Click connect and select `remote`, then enter the following information:
 Note the difference in the launcher location to the linux version. 
 
 If python is having issues finding the pvconnect module, the folder can be copied into the scripts folder, or into the site-packages folder for the virtual environment.
+
+## Jupyter server for post processing
+---
+All automated post processing can be handled via remote Jupyter notebooks, using a Jupyter server running on the cluster where data is located. Example post processing notebooks can be found: https://github.com/zCFD/zPost.
+
+Firslty you will need to expose a port over ssh to the cluster:
+
+```
+ssh -L PORT:localhost:PORT user@host 
+```
+
+For choice of port I usually use 20000 plus a unique number for each cluster:
+
+```
+ssh -L 20000:localhost:20000 ab12345@bc4login.acrc.bris.ac.uk 
+```
+
+This will connect you to the cluster and expose port `20000`. Next source the zCFD virtual environment, move to whatever directory you want to launch the server from- note this will effectively appear as your root for the Jupyter notebooks. So if you want to access all your results, you should launch from your results root.
+
+```
+source $PATH_TO_ZCFD/bin/activate
+cd $PATH_TO_RESULTS
+```
+Then run the following command to start a Jupyter notebook server, which you will be able to connect to through the port you exposed- note here the port numbers must match.
+
+```
+jupyter lab --no-browser --port=20000
+```
+
+This will start the server, after a short time you will get a readout with a number of URL's. Either `ctrl + click` one of these, or copy and paste it into a browser to connect. Once connected you will be able to run post processing notebooks.
+
+To connect to this server on the VSCode Jupyer extension open the remote .ipynb notebook, through the VSCode ssh remote setup, select to trust it, then where currently a local server is highlighted, click this and select 'existing', and copy the url produced by the jupyter server on the cluster. Select the option to reload VSCode and the server should be connected.

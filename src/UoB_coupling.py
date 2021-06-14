@@ -30,7 +30,7 @@ from zcfd.solvers.utils.RuntimeLoader import create_abaqus_fsi
 from zcfd.utils import config
 from zcfd.utils.coupling import py_rbf
 import sys
-import matlab.engine
+import h5py
 
 
 # import libsimulia_cse as simulia_cse
@@ -40,11 +40,20 @@ def post_init(self):
     self.abaqus_fsi = create_abaqus_fsi(self.solverlib, self.parameters['case name'], self.parameters['problem name'], self.parameters)
 
     num_faces = self.abaqus_fsi.init(self.mesh[0])
-
+    
     p = self.abaqus_fsi.get_pressures(self.solver_data[0], self.mesh[0])
-    nodes = self.abaqus_fsi.get_fsi_nodes(self.mesh[0])  # x, y, z of nodes on fsi surface
-    face_nodes = self.abaqus_fsi.get_fsi_face_nodes()  # face nodes ALL QUADS CURRENTLY
-    self.num_nodes = int(len(nodes) / 3)
+
+    if solver_info:
+        nodes = self.abaqus_fsi.get_fsi_nodes(self.mesh[0])  # x, y, z of nodes on fsi surface
+        face_nodes = self.abaqus_fsi.get_fsi_face_nodes()  # face nodes ALL QUADS CURRENTLY
+        self.num_nodes = int(len(nodes) / 3)
+    if mesh_info:
+        h5mesh = hyp5.File(config.options.problem_name[0] + '.h5')
+        fsi_faces = np.where(np.array(h5mesh['mesh']['faceInfo']) == self.parameters['abaqus fsi']['zone']
+        for i in range(h5mesh['mesh'].get('numFaces')):
+            faceIndex[i+1] = 
+
+
 
     self.rank = MPI.COMM_WORLD.Get_rank()
 

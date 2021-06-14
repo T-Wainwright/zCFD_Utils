@@ -207,3 +207,42 @@ jupyter lab --no-browser --port=20000
 This will start the server, after a short time you will get a readout with a number of URL's. Either `ctrl + click` one of these, or copy and paste it into a browser to connect. Once connected you will be able to run post processing notebooks.
 
 To connect to this server on the VSCode Jupyer extension open the remote .ipynb notebook, through the VSCode ssh remote setup, select to trust it, then where currently a local server is highlighted, click this and select 'existing', and copy the url produced by the jupyter server on the cluster. Select the option to reload VSCode and the server should be connected.
+
+## Attaching a debugger
+---
+
+It is possible to attach a python debugger to the solver, so that you can perform live debugging at runtime and keep track of the call stack and memory allocation. The specific ways to do this depend on what IDE you use, I personally use VScode, so this tutorial will demonstrate that.
+
+The first step is to launch VSCode from within the zCFD virtual environment:
+
+```
+source $PATH_TO_ZCFD/bin/activate
+cd $PATH_TO_WORKING_DIRECTORY
+code .
+```
+This will ensure the VSCode python extension can correctly find the virtual environment to run zCFD from. 
+
+Next press `ctrl + shift + p` to bring up the command palate, and select "python: select interpreter". Here click the "find interpreter" option, and navigate to the `/bin/` folder in the zCFD distribution, and select the `python` executable (note not python3). At this point the bottom right tool bar should display "python3: ('zCFD...VIRTUAL_ENV...')".
+
+Finally navigate to the debugger panel, and select "create a launch.json file". In this file you will need to select launch, and make sure the program points to the `/bin/launch.py` file, additionally you need to supply arguments pointing to a test case mesh and control dictionary. An example working launch.json file is shown below.
+
+```
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: zCFD",
+            "type": "python",
+            "request": "launch",
+            "program": "bin/launcher.py",
+            "args": ["../cases/MDO_250K/MDO_125K.blk.h5", "-c", "../cases/MDO_250K/125_OD.py"],
+            "console": "integratedTerminal"
+        }
+    ]
+}
+```
+
+With this in place you should be able to launch the solver within the python debugger in VSCode, and apply breakpoints to parts of the code in order to inspect variables and examine the call stack.

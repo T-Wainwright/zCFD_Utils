@@ -40,8 +40,8 @@ class UoB_coupling():
         faceIndex = np.zeros_like(faceInfo[:, 0])
 
         for i in range(numFaces - 1):
-            faceIndex[i + 1] = faceType[i + 1] + faceIndex[i]
-
+            faceIndex[i + 1] = faceType[i] + faceIndex[i]
+            
         # find faces with tag fsi_zone
         fsi_faces = np.where(faceInfo[:, 0] == fsi_zone)[0]
 
@@ -52,17 +52,25 @@ class UoB_coupling():
         for f in range(self.n_f):
             self.face[f] = {}
             faceID = fsi_faces[f]
-            n_faceNodes = faceInfo[fsi_faces[f], 0]
+            n_faceNodes = faceType[fsi_faces[f], 0]
             self.face[f]['n_faceNodes'] = n_faceNodes
             for i in range(n_faceNodes):
                 self.face[f][i] = {}
-                nodeID = faceNodes[faceIndex[faceID] + i][0]
+                offset = faceIndex[faceID]
+                nodeID = faceNodes[offset + i][0]
                 self.face[f][i]['nodeID'] = nodeID
                 self.face[f][i]['coord'] = nodeVertex[nodeID]
-            self.face[f]['norm'] = -np.cross([np.array(self.face[f][0]['coord']) - np.array(self.face[f][1]['coord'])], [np.array(self.face[f][0]['coord']) - np.array(self.face[f][3]['coord'])])[0]
-            self.face[f]['norm'] = -np.cross([np.array(self.face[f][0]['coord']) - np.array(self.face[f][1]['coord'])], [np.array(self.face[f][0]['coord']) - np.array(self.face[f][3]['coord'])])[0]
+            self.face[f]['norm'] = -np.cross([np.array(self.face[f][0]['coord']) - np.array(self.face[f][1]['coord'])], [np.array(self.face[f][0]['coord']) - np.array(self.face[f][2]['coord'])])[0]
             self.face[f]['unit_norm'] = self.face[f]['norm'] / np.linalg.norm(self.face[f]['norm'])
             self.face[f]['centre'] = np.mean(np.array([self.face[f][i]['coord'] for i in range(self.face[f]['n_faceNodes'])]), axis=0)
+
+            if self.face[f]['n_faceNodes'] == 3:
+                self.face[f]['area'] = 0.5 * np.linalg.norm(self.face[f]['norm'])
+            elif self.face[f]['n_faceNodes'] == 4:
+                self.face[f]['area'] = np.linalg.norm(self.face[f]['norm'])
+
+            else:
+                print('ERROR! n_faceNodes = {}'.print(self.face[f]['n_faceNodes']))
 
         print(self.n_f)
 
@@ -163,6 +171,15 @@ class UoB_coupling():
                 index = f * 4 + i
                 self.face[f][i]['coord'] = self.aero_nodes[self.node_labels.index(self.face_nodes[index])]
             self.face[f]['norm'] = np.cross([np.array(self.face[f][0]['coord']) - np.array(self.face[f][1]['coord'])], [np.array(self.face[f][0]['coord']) - np.array(self.face[f][3]['coord'])])[0]
+
+    def write_face_normals(self, fname):
+        f = open(fname,'w')
+        for face in self.face:
+            f.write('{} \t {} \t {} \t {} \t {} \t {} \n'.format(self.face[face]['centre'][0], self.face[face]['centre'][1], self.face[face]['centre'][2], self.face[face]['unit_norm'][0], self.face[face]['unit_norm'][1], self.face[face]['unit_norm'][2]))
+            # f.write('{} \t {} \t {} \t {} \t {} \t {} \n'.format(self.face[face][1]['coord'][0], self.face[face][1]['coord'][1], self.face[face][1]['coord'][2], self.face[face]['unit_norm'][0], self.face[face]['unit_norm'][1], self.face[face]['unit_norm'][2]))
+
+        f.close()
+
 
 
 def generate_transfer_matrix(aero_nodes, struct_nodes, r0, rbf='c2', polynomial=True):

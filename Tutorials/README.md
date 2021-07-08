@@ -37,7 +37,7 @@ There's a little to unpack here. The official guide states:
 
 "The optimimum number of execution tasks $ntask should match the total number of sockets (usually two per node) **not** the number of cores."
 
-From personal experience this may be true for HPC nodes, but if you're running the code locally for development purposes, then best results are achieved by setting this to the total number of CPU's you want to use. To find the total number of CPU's you have available, run the `lscpu` command which should give you following readout:
+This applies for large multi-node HPC jobs using hybrid OpenMP and MPI, but running the code locally for development purposes will be  purely MPI, then best results are achieved by setting this to the total number of CPU's you want to use. To find the total number of CPU's you have available, run the `lscpu` command which should give you following readout:
 
 ```
 Architecture:                    x86_64
@@ -114,27 +114,22 @@ In the `tools` menu select `manage plugins`, and load `zCFDReader` from the remo
 
 ---
 
-You can also use the paraview client/ server setup to remotely acces results on a cluster without having to download them to your local machine. Here is a step by step guide on how to set this up:
-
-### Prerequisits:
-
-1. Upload a version of zCFD to your remote cluster
-2. Setup a keyless ssh connection to your remote cluster: https://linuxize.com/post/how-to-setup-passwordless-ssh-login/
-3. Clone the paraview connect repository to your local machine:
-   https://github.com/zenotech/ParaViewConnect
-4. Locally install the version of paraview shipped with zCFD (version can be found in `zcfd/lib/paraview-VERSION)`
+You can also use the paraview client/ server setup to remotely access results on a cluster without having to download them to your local machine. Here is a step by step guide on how to set this up:
 
 ## Setting up local client
 
 ### Linux
-In the `ParaViewConnect\scripts` directory run:
 
-```
-./create_virtualenv.bsh /path/to/ParaView/bin/pvpython
-```
-From the `share` directory, copy `servers.pvsc` to your local paraview config directory (located at `~./config/ParaView`). **This will overwrite any existing server setups you have created, but it will also setup a localhost server for zCFDReader**
 
-Open up ParaView GUI, and click connect, you should see the get the following dialogue box:
+1. Upload a version of zCFD to your remote cluster
+2. Verify you have python2 and python3 installed by running `python -V` and `python3 -V` in terminal, and checking the versions are different
+3. Setup a keyless ssh connection to your remote cluster: https://linuxize.com/post/how-to-setup-passwordless-ssh-login/
+4. Clone the paraview connect repository to your local machine:
+   https://github.com/zenotech/ParaViewConnect
+5. Locally install the version of paraview shipped with zCFD (version can be found in `zcfd/lib/paraview-VERSION)`
+6. In the `ParaViewConnect\scripts` directory run:  `./create_virtualenv.bsh /path/to/ParaView/bin/`
+7. From the `share` directory, copy `servers.pvsc` to your local paraview config directory (located at `~./config/ParaView`). **This will overwrite any existing server setups you have created, but it will also setup a localhost server for zCFDReader**
+8. Open up ParaView GUI, and click connect, you should see the get the following dialogue box:
 
 Select `remote`, then enter the following information:
 
@@ -152,13 +147,35 @@ Note the ';' at the end of the shell cmd prefix.
 
 After this click 'ok', and you sould connect automatically (remember to turn on any VPN you require to gain keyless access to the cluster). You can validate this by clicking `open`, and you should find yourself in your root directory on a login node.
 
-### Windows
-From the root folder run `scripts\create_virtualenv.bat`. Note note in `create_virtualenv.bat` you may need to specify that the virtual environement uses python 2.7 by setting:
-
-```
-virtualenv --python=python2.7 pvconnect-py27
-```
-Fire up paraview GUI, and load servers from `servers-windows.pvsc` in the `share` directory. Note here you need to load the windows version, since this file contains the commands to launch the server (which will be different for each OS). 
+### Windows (Powershell)
+---
+1. Upload a version of zCFD to your remote cluster
+2. Download the latest python from: https://www.python.org/downloads/
+    - Ensure you select to install pip and select 'add to path' and 'install for all users'
+    - Verify this works by running `py` in a powershell, and checking the version matches the version you just installed
+    - Verify pip is installed by running `pip` in a powershell, you should get usage information
+    - If py or pip isn't recognised, ensure they are installed for all users, and part of the $PATH environment variable
+3. Install virtualenv by running `pip install virtualenv`
+    - Verify this by running `virtualenv` in a powershell, you should get usage information
+    - If virtualenv isn't recongised, repeat this step whilst running as an admin
+3. Download python 2.7.18 from: https://www.python.org/downloads/release/python-2718/
+    - Ensure you select 'add to path'
+    - Verify this by running `py -2`in a powershell, and checking the version reads '2.7.18'
+5. Locally install the version of paraview shipped with zCFD (version can be found in `zcfd/lib/paraview-VERSION)`
+6. Setup a keyless ssh connection to your remote cluster from **powershell**
+    - verify you have openSSH installed by running `ssh`- you should get usage information. If you do not, follow these instructions to install openSSH: https://docs.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse
+    - run `ssh-keygen` in powershell to create a key, the defaults should all be fine
+    - run `note .ssh\id_rsa.pub` to open the public key in notepad
+    - copy this key and **append** it to `.ssh\authorized_keys` on your remote machine
+    - Verify the connection by running `ssh user@host` to confirm that you now have keyless access (you shouldn't need to enter a password)
+7. Clone the paraview connect repository to your local machine:
+   https://github.com/zenotech/ParaViewConnect
+   - If you install it into a OneDrive location, ensure to select 'always keep on this device'
+8. Open `scripts\create_virtualenv.bat` in a text editor and add the `--python=python2.7` term to the `virtualenv` command:
+   - `virtualenv --python=python2.7 pvconnect-py27`
+9. Run `.\scripts\create_virtualenv.bat` from the root paraview connect folder
+10. Copy the `pvconnect` folder from the root to the `\pvconnect-py27\Lib\site-packages\` and `\scripts\` folders
+11. Fire up paraview GUI, and load servers from `servers-windows.pvsc` in the `share` directory. Note here you need to load the windows version, since this file contains the commands to launch the server (which will be different for each OS). 
 
 Click connect and select `remote`, then enter the following information:
 
@@ -172,9 +189,9 @@ Click connect and select `remote`, then enter the following information:
 | mpiexec:| `mpiexec.hydra`
 | Shell cmd prefix:| `source $FULL_PATH_TO_REMOTE_ZCFD/bin/activate;`
 
-Note the difference in the launcher location to the linux version. 
+Note the difference in the launcher location to the linux version.
 
-If python is having issues finding the pvconnect module, the folder can be copied into the scripts folder, or into the site-packages folder for the virtual environment.
+For diagnosing a connection it can be useful to open up the `output window` pane from the `view` menu before attempting to connect. This will show what point in the process paraview connect is getting stuck in if it's not connecting. 
 
 ## Jupyter server for post processing
 ---

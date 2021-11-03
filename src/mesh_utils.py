@@ -1,5 +1,6 @@
 import numpy as np
 import h5py
+import os
 
 """ 
 Converter for CBA mesh to zCFD h5 format
@@ -1235,8 +1236,23 @@ class zCFD_mesh:
                 f.write("{} ".format(np.where(unique_nodes == surface_faceNodes[face * 4 + i])[0][0] + 1))
             f.write("\n")
         f.close()
-        
+
         return
+
+    def extractBoundaryNodes(self, zoneID):
+        # returns a list of boundary node locations
+        surface_faces = np.where(self.faceInfo[:, 0] == zoneID)[0]
+
+        boundary_faces = np.empty((0, 3), dtype=float)
+
+        for face in surface_faces:
+            for node in range(self.faceType[face]):
+                faceNodeID = self.faceIndex[face] + node
+                nodeID = self.faceNodes[faceNodeID][0]
+                nodeToAdd = self.nodeVertex[nodeID]
+                boundary_faces = np.vstack([boundary_faces, nodeToAdd])
+
+        return boundary_faces
 
     def extractHaloFaces(self):
         # Count number of halo cells in the mesh

@@ -19,7 +19,7 @@ import numpy as np
 import scipy.io
 import h5py
 import matplotlib.pyplot as plt
-import ATOM_Wrapper
+import Wrappers.ATOM_Wrapper
 
 
 # Functions
@@ -41,7 +41,7 @@ class UoB_coupling():
         return U2
 
     def interp_21(self, U2):
-        U1 = rbf(U2, np.transpose(self.H))
+        U1 = rbf_interp(U2, np.transpose(self.H))
         return U1
 
 

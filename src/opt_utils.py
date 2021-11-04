@@ -72,6 +72,29 @@ def plot_10_modes(foil, U, n=10):
     fig.tight_layout()
 
 
+def plot_10_modes_cage(foil, U, rbf, cage_slice, n=10):
+    fig = plt.figure(figsize=(15, 20), dpi=300, facecolor='w', edgecolor='k')
+    for i in range(n):
+        ax = fig.add_subplot(int(np.ceil(n / 2)), 2, i + 1)
+        d_points = deform_aerofoil(foil, U, i)
+        deformations = add_z(d_points - foil.points)
+        cage_deformations = np.matmul(rbf.H, deformations)
+        ax.plot(d_points[:, 0], d_points[:, 1])
+        ax.plot(foil.points[:, 0], foil.points[:, 1])
+        ax.plot(cage_slice[:, 0], cage_slice[:,1])
+        ax.plot(cage_slice[:,0] + cage_deformations[:,0], cage_slice[:,0] + cage_deformations[:,1])
+        ax.axis('equal')
+        ax.set_xlabel('x/c', fontsize=12)
+        ax.set_ylabel('z', fontsize=12)
+
+        ax.set_title('Mode {}'.format(i), fontsize=18)
+
+    fig.tight_layout()
+
+
+
+
+
 def load_control_cage(fname):
     cage_nodes = np.loadtxt(fname, skiprows=3)
     return cage_nodes
@@ -116,9 +139,13 @@ U, S, VH = np.linalg.svd(dz, full_matrices=False)
 
 # Load control cage
 
-cage_nodes = control_cage('/home/tom/Documents/University/Coding/zCFD_Utils/data/control_cage.cba')
-cage_slice = cage_nodes.get_slice0()
-cage_slice = cage_slice / 4
+# cage_nodes = control_cage('/home/tom/Documents/University/Coding/zCFD_Utils/data/control_cage.cba')
+# cage_slice = cage_nodes.get_slice0()
+x = np.array([0.8, 0.5, 0.3, 0.1, 0, -0.1, 0, 0.1, 0.3, 0.5, 0.8])
+y = np.array([1, 1, 1, 1, 0.5, 0, -0.5, -1, -1, -1, -1])
+cage_slice = np.transpose(np.vstack([x,y]))
+cage_slice = add_z(cage_slice)
+# cage_slice = cage_slice / 4
 cage_slice[:, 1] = cage_slice[:, 1] * 0.12
 
 # load naca0012 nodes
@@ -126,10 +153,15 @@ naca0012_nodes = aerofoils['NACA 0012-64.dat'].points
 
 # Couple control cage 0th nodes with naca0012 profile:
 
-rbf = py_rbf.UoB_coupling(cage_nodes.get_slice0(), aerofoils['NACA 0012-64.dat'].get_3D_slice())
+rbf = py_rbf.UoB_coupling(cage_slice, aerofoils['NACA 0012-64.dat'].get_3D_slice())
 rbf.generate_transfer_matrix(20, 'c2', False)
 
 # perturb naca0012 by first mode, and print result
 
 deformed_aerofoil = deform_aerofoil(aerofoils['NACA 0012-64.dat'], U, 0)
 deformations = add_z(deformed_aerofoil - aerofoils['NACA 0012-64.dat'].points)
+
+a = np.matmul(rbf.H, deformations) # issue line- check out interp in py_rbf
+
+# plot cage deformations
+plot_10_modes_cage(aerofoils['NACA 0012-64.dat'], U, rbf, cage_slice)

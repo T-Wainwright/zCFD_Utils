@@ -1,5 +1,6 @@
 import numpy as np
 import h5py
+import os
 
 """ 
 Converter for CBA mesh to zCFD h5 format
@@ -1004,6 +1005,11 @@ class zCFD_mesh:
         self.faceType = np.array(g.get('faceType'))
         self.nodeVertex = np.array(g.get('nodeVertex'))
 
+        # create additional faceIndex dataset:
+        self.faceIndex = np.zeros_like(self.faceType)
+        for i in range(self.numFaces - 1):
+            self.faceIndex[i + 1] = self.faceType[i + 1] + self.faceIndex[i]
+
         if self.V:
             print('zCFD mesh successfully loaded ')
             print('nCells= {} \t nFaces= {}'.format(self.numCells, self.numFaces))
@@ -1230,8 +1236,23 @@ class zCFD_mesh:
                 f.write("{} ".format(np.where(unique_nodes == surface_faceNodes[face * 4 + i])[0][0] + 1))
             f.write("\n")
         f.close()
-        
+
         return
+
+    def extractBoundaryNodes(self, zoneID):
+        # returns a list of boundary node locations
+        surface_faces = np.where(self.faceInfo[:, 0] == zoneID)[0]
+
+        boundary_faces = np.empty((0, 3), dtype=float)
+
+        for face in surface_faces:
+            for node in range(self.faceType[face]):
+                faceNodeID = self.faceIndex[face] + node
+                nodeID = self.faceNodes[faceNodeID][0]
+                nodeToAdd = self.nodeVertex[nodeID]
+                boundary_faces = np.vstack([boundary_faces, nodeToAdd])
+
+        return boundary_faces
 
     def extractHaloFaces(self):
         # Count number of halo cells in the mesh
@@ -1330,6 +1351,34 @@ class zCFD_mesh:
         self.writeh5('deformed.h5')
 
         os.system('rm rotate.LKE surface.xyz volume.xyz surface_deformations.xyz volume_deformations.xyz volume.xyz.meshdef def.xyz')
+
+    def get_surface_nodes(self, surfaceID, fname):
+        # Find faceID's with zone tag specified
+        surface_faces = np.where(self.faceInfo[:, 0] == surfaceID)[0]
+
+        # find all the nodes making up the face
+        n_surface_nodes = np.sum(self.faceType[surface_faces])
+        surface_node_vertex = np.zeros([n_surface_nodes])
+
+        index = 0
+        for f in surface_faces:
+            for i in range(self.faceType[f][0]):
+                surface_node_vertex[index] = self.faceNodes[self.faceIndex[f] + i]
+                index = index + 1
+        
+        # sort these to only get unique nodes
+        unique_vertex = np.unique(surface_node_vertex)
+
+        # get vertex points for unique nodes
+        surface_nodes = np.zeros([len(unique_vertex), 3])
+        for i in range(len(unique_vertex)):
+            surface_nodes[i, :] = self.nodeVertex[int(unique_vertex[i]), :]
+
+        # print surface nodes
+        f = open(fname, "w")
+        # f.write("{}\n".format(len(surface_nodes[:,0])))
+        for nodes in surface_nodes:
+            f.write("{} \t {} \t {} \n".format(nodes[0], nodes[1], nodes[2]))
 
 
 class zcfd_results():

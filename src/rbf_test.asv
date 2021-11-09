@@ -1,118 +1,67 @@
 clear all
 close all
 
-%% Create aero and structural nodes
+%% Load system points
 
-r = 5;
-h = 120;
-r0 = 20;
+control_cage = importdata('data/domain_ordered.ctr.asa.16', ' ', 1).data(:, [1,3]);
+naca0012 = importdata('data/UIUC Aerofoil Library/Smoothed/NACA 0012-64.dat').data
 
-n_s = 100;
-n_r = 100;
-n_a = n_r * n_s;
 
-t= linspace(0, 2*pi(), n_r);
 
-x_s = zeros(1,n_s);
-y_s = zeros(1,n_s);
-z_s = linspace(0,h,n_s);
-
-struct_nodes = [x_s; y_s; z_s]';
-
-aero_nodes = zeros(n_a, 3);
-
-n = 1;
-
-for i = 1:n_s
-    for j = 1:n_r
-         aero_nodes(n,:) = [r * sin(t(j)); r * cos(t(j)); z_s(i)];
-         n = n+1;
-    end
-end
 
 %% Plot meshes
-scatter3(aero_nodes(:,1), aero_nodes(:,2), aero_nodes(:,3));
+plot(control_cage(:, 1), control_cage(:, 2))
 hold on
-scatter3(struct_nodes(:,1), struct_nodes(:,2), struct_nodes(:,3));
-
-%% Build test interpolation function
-F_a = aero_nodes(:,3).^2 / 10;
-% F_a(:) = 1;
-
-figure
-plot(aero_nodes(:,3), F_a)
-
-r_min = ones(1,n_a) * h;
-nn = zeros(1,n_a);
+plot(naca0012(:, 1), naca0012(:, 2))
 
 
 
 %% Build RBF system
 
-% Preallocate matrices
-A_as = zeros(n_a, n_s + 4);
-M = zeros(n_s, n_s);
-P = zeros(4, n_s);
+n_1 = length(control_cage(:, 1));
+n_2 = length(naca0012(:, 2));
 
-% Populate P matrix
-P(1,:) = 1;
-P(2,:) = struct_nodes(:,1);
-P(3,:) = struct_nodes(:,2);
-P(4,:) = struct_nodes(:,3);
+r0 = 1;
+
+% Preallocate matrices
+A_12 = zeros(n_1, n_2);
+M_22 = zeros(n_2, n_2);
+
 
 % Populate M matrix
-for i = 1:n_s
-    for j = 1:n_s
-        r = norm(struct_nodes(i,:) - struct_nodes(j,:)) / r0;
+for i = 1:n_2
+    for j = 1:n_2
+        r = norm(naca0012(i,:) - naca0012(j,:)) / r0;
         if r <= 1
 %             f = (1-r)^8 * (32*r^3 + 25*r^2 + 8*r + 1);
             f = (1-r)^4 * (4*r + 1);
 %             f = (1-r)^2;
 %             f = exp(-r^2);
-            M(i,j) = f;
+            M_22(i,j) = f;
         end
     end
 end
 
 % Populate A_as matrix
-A_as(:,1) = 1;
-A_as(:,2) = aero_nodes(:,1);
-A_as(:,3) = aero_nodes(:,2);
-A_as(:,4) = aero_nodes(:,3);
 
-for i = 1:n_s
-    for j = 1:n_a
-        r = norm(struct_nodes(i,:) - aero_nodes(j,:)) / r0;
-        if r < r_min(i)
-            r_min(j) = r;
-            nn(j) = 1;
-        end
+for i = 1:n_2
+    for j = 1:n_1
+        r = norm(naca0012(i,:) - control_cage(j,:)) / r0;
         if r <= 1
 %             f = (1-r)^8 * (32*r^3 + 25*r^2 + 8*r + 1);
             f = (1-r)^4 * (4*r + 1);
 %             f = (1 - r)^2;
 %             f = exp(-r^2);
-            A_as(j, i+4) = f;
+            A_12(j,i) = f;
         end
     end
 end
 
-F_s_nn = zeros(1,n_s);
-for i = 1:n_a
-    F_s_nn(nn(i)) = F_s_nn(nn(i)) + F
+H = A_12 * inv(M_22);
 
-M_inv = pinv(M);
-% Construct C_ss matrix
-C_ss = [zeros(4), P; P', M];
+%% Deform mesh
+deformations = zeros(naca0012);
 
-% Construct M_p
-M_p = pinv(P * M_inv * P');
-
-% Calculate H matrix
-H_as = A_as * [M_p * P * M_inv; M_inv - M_inv * P' * M_p * P * M_inv];
-H_as_noply = A_as(:,5:end) * pinv(M);
-
-F_s = H_as' * F_a;
 
 figure
 plot(struct_nodes(:,3), F_s);
@@ -130,13 +79,16 @@ plot(aero_nodes(:,3), D_a, 'r');
 ylabel('displacement')
 legend('structure','aero')
 
-
+% close all
 figure
 hold on
 plot(struct_nodes(:,3), F_s);
 plot(aero_nodes(:,3), F_a);
+plot(struct_nodes(:,3), F_s_nn);
+plot(struct_nodes(:,3), F_s_noply)
 
-legend('structure','aero')
+
+legend('struct_rbf','aero','structure_nn')
 ylabel('force')
 
 return
@@ -144,7 +96,7 @@ return
 
 %% Inverse method
 % Preallocate matrices
-A_as = zeros(n_s, n_a + 4);
+A_12 = zeros(n_s, n_a + 4);
 M = zeros(n_a, n_a);
 P = zeros(4, n_a);
 
@@ -182,10 +134,10 @@ end
 
 
 % Populate A_as matrix
-A_as(:,1) = 1;
-A_as(:,2) = struct_nodes(:,1);
-A_as(:,3) = struct_nodes(:,2);
-A_as(:,4) = struct_nodes(:,3);
+A_12(:,1) = 1;
+A_12(:,2) = struct_nodes(:,1);
+A_12(:,3) = struct_nodes(:,2);
+A_12(:,4) = struct_nodes(:,3);
 
 disp('A_as Matrix')
 for i = 1:n_a
@@ -193,7 +145,7 @@ for i = 1:n_a
         r = norm(aero_nodes(i,:) - struct_nodes(j,:)) / r0;
         if r <= 1
             f = (1-r)^4 * (4*r + 1);
-            A_as(j, i+4) = f;
+            A_12(j, i+4) = f;
         end
     end
     if mod(i, 1000) == 0
@@ -216,7 +168,7 @@ M_p = pinv(P * M_inv * P');
 
 disp('Solve Linear system')
 % Calculate H matrix
-H_sa = A_as * [M_p * P * M_inv; M_inv - M_inv * P' * M_p * P * M_inv];
+H_sa = A_12 * [M_p * P * M_inv; M_inv - M_inv * P' * M_p * P * M_inv];
 
 F_s = F_a' * H_sa';
 

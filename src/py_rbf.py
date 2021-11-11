@@ -31,9 +31,10 @@ class UoB_coupling():
         self.mesh2_nodes = mesh2
 
         self.n1 = len(mesh1[:, 0])
-        self.n2 = len(mesh2[:, 2])
+        self.n2 = len(mesh2[:, 0])
 
     def generate_transfer_matrix(self, r0, rbf='c2', polynomial=True):
+        # Will generate H12 matrix
         self.H = generate_transfer_matrix(self.mesh1_nodes, self.mesh2_nodes, r0, rbf, polynomial)
 
     def interp_12(self, U1):
@@ -41,72 +42,75 @@ class UoB_coupling():
         return U2
 
     def interp_21(self, U2):
-        U1 = rbf_interp(U2, np.transpose(self.H))
+        U1 = rbf_interp(U2, self.H.T)
         return U1
 
 
 def generate_transfer_matrix(mesh1, mesh2, r0, rbf='c2', polynomial=True):
     # returns- H: (n1,n2) full transfer matrix between mesh2 and mesh1 - inverting an n2 x n2 matrix
     # Reference DOI: 10.1002/nme.2219
-    n_a = len(mesh1[:, 0])
-    # n_a = mesh1[:,0].size
-    n_s = len(mesh2[:, 0])
+    n_1 = len(mesh1[:, 0])
+    n_2 = len(mesh2[:, 0])
 
     switcher = {'c0': c0, 'c2': c2, 'c4': c4, 'c6': c6}
     rbf = switcher.get(rbf)
 
     # preallocate matrices    
     if polynomial:
-        A_as = np.zeros((n_a, n_s + 4))
-        P_s = np.ones((4, n_s))
+        A_12 = np.zeros((n_1, n_2 + 4))
+        P_2 = np.ones((4, n_2))
     else:
-        A_as = np.zeros((n_a, n_s))
+        A_12 = np.zeros((n_1, n_2))
 
-    M_ss = np.zeros((n_s, n_s))
+    M_22 = np.zeros((n_2, n_2))
 
     print('generate block M')
 
     # Generate block matrix M (and P if polynomial) equations 11 and 12
-    for i in range(n_s):
-        for j in range(n_s):
-            rad = (np.linalg.norm((mesh2[i] - mesh2[j]))) / r0
+    for i in range(n_2):
+        for j in range(n_2):
+            rad = (np.linalg.norm((mesh2[i, :] - mesh2[j, :]))) / r0
             if rad <= 1.0:
-                M_ss[i][j] = rbf(rad)
+                M_22[i][j] = rbf(rad)
         if polynomial:
-            P_s[1:, i] = mesh2[i]
+            P_2[1:, i] = mesh2[i]
         if i % 1000 == 0:
             print(i)
 
-    print('generate block A_as')
+    print('generate block A_12')
 
-    # Generate A_as matrix- equation 13
-    for i in range(n_a):
-        for j in range(n_s):
-            rad = np.linalg.norm((mesh1[i] - mesh2[j])) / r0
+    # Generate A_12 matrix- equation 13
+    for i in range(n_1):
+        for j in range(n_2):
+            rad = np.linalg.norm((mesh1[i, :] - mesh2[j, :])) / r0
             if rad <= 1.0:
                 if polynomial:
-                    A_as[i][j + 4] = rbf(rad)
+                    A_12[i][j + 4] = rbf(rad)
                 else:
-                    A_as[i][j] = rbf(rad)
+                    A_12[i][j] = rbf(rad)
         if polynomial:
-            A_as[i][1:4] = mesh1[i]
-            A_as[i][0] = 1
+            A_12[i][1:4] = mesh1[i]
+            A_12[i][0] = 1
         if i % 1000 == 0:
             print(i)
 
-    M_inv = np.linalg.pinv(M_ss)
+    M_inv = np.linalg.inv(M_22)
+    
     if polynomial:
         # Equations 21 and 22 in Allen and Rendall
-        M_p = np.linalg.pinv(np.matmul(np.matmul(P_s, M_inv), np.transpose(P_s)))
+        M_p = np.linalg.pinv((P_2 @ M_inv) @ P_2.T)
 
-        Top = np.matmul(np.matmul(M_p, P_s), M_inv)
-        Bottom = M_inv - np.matmul(np.matmul(np.matmul(np.matmul(M_inv, np.transpose(P_s)), M_p), P_s), M_inv)
+        Top = (M_p @ P_2) @ M_inv
+        
+        Bottom = M_inv - (((M_inv @ P_2.T) @ M_p) @ P_2) @ M_inv
 
         B = np.concatenate((Top, Bottom))
 
-        H = np.matmul(A_as, B)
+        H = A_12 @ B
     else:
-        H = np.matmul(A_as, M_inv)
+        H = A_12 @ M_inv
+        print(A_12.shape)
+        print(M_inv.shape)
     return H
 
 
@@ -115,7 +119,7 @@ def interp_displacements(U_s, H):
     U_a = np.zeros((H.shape[0], U_s.shape[1]))
 
     for i in range(U_s.shape[1]):
-        U_a[:, i] = np.matmul(H, U_s[:, i])
+        U_a[:, i] = H @ U_s[:, i]
     return U_a
 
 
@@ -124,7 +128,7 @@ def interp_forces(F_a, H):
     F_s = np.zeros((H.shape[1], F_a.shape[1]))
 
     for i in range(F_a.shape[1]):
-        F_s[:, i] = np.matmul(np.transpose(H), F_a[:, i])
+        F_s[:, i] = H.T @ F_a[:, i]
     return F_s
 
 
@@ -132,7 +136,7 @@ def rbf_interp(U1, H):
     # perform matrix multiplacation to interpolate U1 to U2
     U2 = np.zeros((H.shape[1], U1.shape[1]))
     for i in range(U1.shape[1]):
-        U2[:, i] = np.matmul(H, U2[:, i])
+        U2[:, i] = H @ U1[:, i]
     return U2
 
 

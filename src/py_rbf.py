@@ -69,7 +69,8 @@ def generate_transfer_matrix(mesh1, mesh2, r0, rbf='c2', polynomial=True):
     # Generate block matrix M (and P if polynomial) equations 11 and 12
     for i in range(n_2):
         for j in range(n_2):
-            rad = (np.linalg.norm((mesh2[i, :] - mesh2[j, :]))) / r0
+            # rad = (np.linalg.norm((mesh2[i, :] - mesh2[j, :]) @ np.array([1, 1, 0.5]).T)) / r0
+            rad = anorm(mesh2[i, :] - mesh2[j, :]) / r0
             if rad <= 1.0:
                 M_22[i][j] = rbf(rad)
         if polynomial:
@@ -82,7 +83,8 @@ def generate_transfer_matrix(mesh1, mesh2, r0, rbf='c2', polynomial=True):
     # Generate A_12 matrix- equation 13
     for i in range(n_1):
         for j in range(n_2):
-            rad = np.linalg.norm((mesh1[i, :] - mesh2[j, :])) / r0
+            # rad = np.linalg.norm((mesh1[i, :] - mesh2[j, :]) @ np.array([1, 1, 0.5]).T) / r0
+            rad = anorm(mesh1[i, :] - mesh2[j, :]) / r0
             if rad <= 1.0:
                 if polynomial:
                     A_12[i][j + 4] = rbf(rad)
@@ -133,11 +135,7 @@ def interp_forces(F_a, H):
 
 
 def rbf_interp(U1, H):
-    # perform matrix multiplacation to interpolate U1 to U2
-    U2 = np.zeros((H.shape[1], U1.shape[1]))
-    for i in range(U1.shape[1]):
-        U2[:, i] = H @ U1[:, i]
-    return U2
+    return H @ U1
 
 
 def c0(r):
@@ -160,3 +158,7 @@ def c6(r):
     return psi
 
 
+def anorm(vec):
+    bias = [1, 1, 0.1]
+    r = np.sqrt((vec[0] * bias[0])**2 + (vec[1] * bias[1])**2 + (vec[2] * bias[2])**2)
+    return r

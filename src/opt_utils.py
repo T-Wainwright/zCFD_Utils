@@ -16,6 +16,7 @@ import py_rbf
 import h5py
 import yaml
 import skopt
+from sklearn.cluster import AgglomerativeClustering
 
 
 class aerofoil_points():
@@ -254,6 +255,12 @@ class control_cage():
 
         return surf_def
 
+    def deformation_list_fromm_dv(self, def_dict):
+        surf_def = self.deform_from_dv(def_dict)
+        surf_def = surf_def.flatten()
+        surf_def_list = surf_def.tolist()
+        return surf_def_list
+
 
 class Blade_geom:
     """
@@ -330,7 +337,7 @@ class design_variables():
 
         for i in range(self.n_sections):
             for j in range(self.n_modes):
-                space.append((-0.5, 0.5))
+                space.append((-1.0, 1.0))
             if self.twist:
                 space.append((-np.pi / 4, np.pi / 4))
 
@@ -425,7 +432,7 @@ class Modal_data():
 
         self.naca0012 = add_z(np.loadtxt(self.data_dir + 'Smoothed/NACA 0012-64.dat', skiprows=3))
 
-        return U, S, VH
+        return
 
 
 def load_cage_section(cage_path):
@@ -523,14 +530,16 @@ modal = Modal_data('/home/tom/Documents/University/Coding/zCFD_Utils/data/UIUC A
 cage_slice = load_cage_section('/home/tom/Documents/University/Coding/zCFD_Utils/data/domain_ordered.ctr.asa.16')
 
 cage = control_cage(blade_props, blade_surf, modal, 10, cage_slice, passengers=True)
-cage.generate_rbf()
+cluster = AgglomerativeClustering(n_clusters=10000).fit(blade_surf.points)
+print(cluster)
+# cage.generate_rbf()
 
 # Optimisation controls
-dv = design_variables(10, 6)
-dv.sample_space()
-deformation_dict = dv.get_deformations(0)
+# dv = design_variables(10, 6)
+# dv.sample_space()
+# deformation_dict = dv.get_deformations(0)
 
-surf_def = cage.deform_from_dv(deformation_dict)
+# surf_def = cage.deform_from_dv(deformation_dict)
 
 
 # # process visualization stuff
@@ -596,7 +605,15 @@ surf_def = cage.deform_from_dv(deformation_dict)
 # surf_def = rbf_cs.H @ cage.dump_deformations()
 
 # Write out deformations
-blade_surf.write_deformed('/home/tom/Documents/University/Coding/zCFD_Utils/data/IEA_15MW_New_rot_deformed.srf.plt', surf_def)
-cage.write_cage('/home/tom/Documents/University/Coding/zCFD_Utils/data/cage.plt')
-cage.write_deformed('../data/deformed_cage.plt')
+# blade_surf.write_deformed('/home/tom/Documents/University/Coding/zCFD_Utils/data/IEA_15MW_New_rot_deformed.srf.plt', surf_def)
+# cage.write_cage('/home/tom/Documents/University/Coding/zCFD_Utils/data/cage.plt')
+# cage.write_deformed('../data/deformed_cage.plt')
 
+# dv = design_variables(10, 6)
+# dv.sample_space()
+# deformation_dict = dv.get_deformations(0)
+
+# surf_def = cage.deform_from_dv(deformation_dict)
+# blade_surf.write_deformed('/home/tom/Documents/University/Coding/zCFD_Utils/data/IEA_15MW_New_rot_deformed.srf.plt', surf_def)
+# cage.write_cage('/home/tom/Documents/University/Coding/zCFD_Utils/data/cage.plt')
+# cage.write_deformed('../data/deformed_cage.plt')

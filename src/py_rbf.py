@@ -69,7 +69,7 @@ def generate_transfer_matrix(mesh1, mesh2, r0, rbf='c2', polynomial=True):
     # Generate block matrix M (and P if polynomial) equations 11 and 12
     for i in range(n_2):
         for j in range(n_2):
-            # rad = (np.linalg.norm((mesh2[i, :] - mesh2[j, :]) @ np.array([1, 1, 0.5]).T)) / r0
+            # rad = np.linalg.norm(mesh2[i, :] - mesh2[j, :]) / r0
             rad = anorm(mesh2[i, :] - mesh2[j, :]) / r0
             if rad <= 1.0:
                 M_22[i][j] = rbf(rad)
@@ -83,7 +83,7 @@ def generate_transfer_matrix(mesh1, mesh2, r0, rbf='c2', polynomial=True):
     # Generate A_12 matrix- equation 13
     for i in range(n_1):
         for j in range(n_2):
-            # rad = np.linalg.norm((mesh1[i, :] - mesh2[j, :]) @ np.array([1, 1, 0.5]).T) / r0
+            # rad = np.linalg.norm(mesh1[i, :] - mesh2[j, :]) / r0
             rad = anorm(mesh1[i, :] - mesh2[j, :]) / r0
             if rad <= 1.0:
                 if polynomial:

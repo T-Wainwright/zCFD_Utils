@@ -16,6 +16,7 @@
 *.m
 *.tec
 *.txt
+*.eps
 CT8_5M.blk
 abaqusfsi.py
 read_lke_bin.py

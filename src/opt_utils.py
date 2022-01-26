@@ -5,9 +5,12 @@ Tom Wainwright 2021
 
 University of Bristol
 
+Currently this code is purely setup to couple the IEA 15MW turbine blade to the zCFD solver
+
 tom.wainwright@bristol.ac.uk
 """
 
+from xmlrpc.client import Boolean
 import numpy as np
 import glob
 import matplotlib.pyplot as plt
@@ -21,9 +24,9 @@ import json
 
 class opt_driver():
     # Main driver class for surrogate model based optimisation
-    def __init__(self, blade_surf):
+    def __init__(self, blade_surf: Blade_surf):
         # Read in offline data
-        blade_props = Blade_geom('/hosme/tom/Documents/University/Coding/zCFD_Utils/data/IEA-15-240-RWT_FineGrid.yaml')
+        blade_props = Blade_geom('/home/tom/Documents/University/Coding/zCFD_Utils/data/IEA-15-240-RWT_FineGrid.yaml')
         modal = Modal_data('/home/tom/Documents/University/Coding/zCFD_Utils/data/UIUC Aerofoil Library/', load=True)
         cage_slice = load_cage_section('/home/tom/Documents/University/Coding/zCFD_Utils/data/domain_ordered.ctr.asa.16')
 
@@ -43,8 +46,8 @@ class opt_driver():
 
 
 class aerofoil_points():
-    # Class for reading in aerofoil points from UIUC database
-    def __init__(self, fname):
+    # Class for reading in aerofoil points from Masters' database- This section of code is called for performing the SVD decomposition of the aerofoil data
+    def __init__(self, fname: str):
         self.name = os.path.basename(fname)
 
         # read points
@@ -58,7 +61,7 @@ class aerofoil_points():
 class control_cage():
     # Class to handle control cage behaviour
     # inputs required- blade_properties class, blade_surface class, modal data class, number of cross sections, cage cross sectional shape
-    def __init__(self, blade_props, blade_surface, modal, n_sections, cage_slice, passengers=True):
+    def __init__(self, blade_props: Blade_geom, blade_surface: Blade_surf, modal: Modal_data, n_sections: int, cage_slice: np.array, passengers=True):
         self.modal_data = modal
         self.blade_props = blade_props
         self.blade_surface = blade_surface
@@ -149,7 +152,7 @@ class control_cage():
             for j in range(self.n_pointsPerSection):
                 self.passenger_deformations[i, j, :] = (self.deformations[i, j, :] * np.sin(np.pi / 4) ** 2 + self.deformations[i + 1, j, :] * np.cos(np.pi / 4) ** 2)
 
-    def write_passengers(self, fname):
+    def write_passengers(self, fname: str):
         # Write passenger nodes to tecplot format
         f = open(fname, 'w')
 
@@ -162,7 +165,7 @@ class control_cage():
 
         f.close()
 
-    def write_deformed_passengers(self, fname):
+    def write_deformed_passengers(self, fname: str):
         # Write passenger node deformations to tecplot format
         f = open(fname, 'w')
 
@@ -175,7 +178,7 @@ class control_cage():
 
         f.close()
 
-    def convert_section_deformations(self, deformations, section):
+    def convert_section_deformations(self, deformations: np.array, section: int):
         # Scale deformations for section- similar process to casting blade, but only scalings and rotations are applied- no offset.
         local_cage_x = deformations[:, 0] * self.chord_i[section]
         local_cage_y = deformations[:, 1] * self.chord_i[section] * self.thick_i[section]
@@ -191,7 +194,7 @@ class control_cage():
         if self.passengers:
             self.deform_passenger_nodes()
 
-    def write_cage(self, fname):
+    def write_cage(self, fname: str):
         # Write control cage file to tecplot
         f = open(fname, 'w')
 
@@ -204,14 +207,14 @@ class control_cage():
 
         f.close()
 
-    def write_control_nodes(self, fname):
+    def write_control_nodes(self, fname: str):
         f = open(fname, "w")
 
         for i in range(len(self.control_nodes[:, 0])):
             f.write('{} \t {} \t {}\n'.format(self.control_nodes[i, 0], self.control_nodes[i, 1], self.control_nodes[i, 2]))
         f.close()
 
-    def write_deformed(self, fname):
+    def write_deformed(self, fname: str):
         # Write deformed control cage file to tecplot
         f = open(fname, 'w')
 

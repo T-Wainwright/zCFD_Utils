@@ -35,7 +35,8 @@ class UoB_coupling():
 
     def generate_transfer_matrix(self, r0, rbf='c2', polynomial=True):
         # Will generate H12 matrix
-        self.H = generate_transfer_matrix(self.mesh1_nodes, self.mesh2_nodes, r0, rbf, polynomial)
+        self.H = generate_transfer_matrix(
+            self.mesh1_nodes, self.mesh2_nodes, r0, rbf, polynomial)
 
     def interp_12(self, U1):
         U2 = rbf_interp(U1, self.H)
@@ -55,7 +56,7 @@ def generate_transfer_matrix(mesh1, mesh2, r0, rbf='c2', polynomial=True):
     switcher = {'c0': c0, 'c2': c2, 'c4': c4, 'c6': c6}
     rbf = switcher.get(rbf)
 
-    # preallocate matrices    
+    # preallocate matrices
     if polynomial:
         A_12 = np.zeros((n_1, n_2 + 4))
         P_2 = np.ones((4, n_2))
@@ -97,13 +98,13 @@ def generate_transfer_matrix(mesh1, mesh2, r0, rbf='c2', polynomial=True):
             print(i)
 
     M_inv = np.linalg.inv(M_22)
-    
+
     if polynomial:
         # Equations 21 and 22 in Allen and Rendall
         M_p = np.linalg.pinv((P_2 @ M_inv) @ P_2.T)
 
         Top = (M_p @ P_2) @ M_inv
-        
+
         Bottom = M_inv - (((M_inv @ P_2.T) @ M_p) @ P_2) @ M_inv
 
         B = np.concatenate((Top, Bottom))
@@ -160,5 +161,6 @@ def c6(r):
 
 def anorm(vec):
     bias = [1, 1, 0.1]
-    r = np.sqrt((vec[0] * bias[0])**2 + (vec[1] * bias[1])**2 + (vec[2] * bias[2])**2)
+    r = np.sqrt((vec[0] * bias[0])**2 + (vec[1] * bias[1])
+                ** 2 + (vec[2] * bias[2])**2)
     return r

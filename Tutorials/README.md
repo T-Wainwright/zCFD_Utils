@@ -2,22 +2,29 @@
 
 This guide is intended for those picking up zCFD for the first time without any prior knowledge of experience with CFD solvers. It should get you to a point where you can run your first jobs both locally, and on a cluster, then view and post process your results, both locally, and from a cluster.
 
+It assumes 0 knowledge of interacting with CFD solvers before, however it asssumes a basic knowledge of the linux filesystem, and particularly how to navigate it using the terminal. Knowledge of commands such as `ls, cd, pwd, cp, mv, rm` etc is assumed, more information on them can be found [here](https://help.ubuntu.com/community/UsingTheTerminal).
+
 ## The zCFD virtual environment
 ---
 
-zCFD runs in it's own python virtual environment. This means it should be fully self contained, with all modules and libraries shipped as is. In order to launch the virtual environment, run:
+zCFD runs in it's own python virtual environment. This means it should be fully self contained, with all modules and libraries shipped as is. In order to launch the virtual environment, run the following source command:
 
 ```
 source $PATH_TO_ZCFD/bin/activate
 ```
 
-This must be run from outside the virtual environment, personally I set an alias in my `.bash_aliases` or `.bashrc` to do this automatically:
+This must be run from outside the zCFD folder, personally I set an [alias](https://linuxize.com/post/how-to-create-bash-aliases/) in my `.bash_aliases` or `.bashrc` to do this automatically:
 
 ```
 alias zcfd="$PATH_TO_ZCFD/bin/activate"  
 ```
 
-The `$` symbol preceeding `PATH_TO_ZCFD` indicates it is just an *environment variable*, and is simply the file address of the zCFD root directory. You can get it very simply by navigating to the root directory and running `pwd`, which will print the path to the current directory you are in.
+The `$` symbol preceeding `PATH_TO_ZCFD` indicates it is just an *environment variable*, and is simply the file address of the zCFD root directory. You can get it very simply by navigating to the root directory and running `pwd`, which will print the path to the current directory you are in:
+
+```
+pwd
+/home/user/Documents/apps/zcfd/zCFD-icc-sse-impi-2021.05.120-Linux-64bit
+```
 
 Once in the zcfd virtual environment the command line should gain the zCFD prefix as see below.
 
@@ -27,7 +34,7 @@ Once in the zcfd virtual environment the command line should gain the zCFD prefi
 ## Running locally
 ---
 
-To run zCFD, invoke the smart use the Smartlaunch command:
+To run zCFD, use the Smartlaunch command:
 
 ```
 run_zcfd --ntask 10 -p $PROBLEM_NAME -c $CASE_NAME

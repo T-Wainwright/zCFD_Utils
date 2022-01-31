@@ -237,19 +237,12 @@ To connect to this server on the VSCode Jupyer extension open the remote .ipynb 
 
 It is possible to attach a python debugger to the solver, so that you can perform live debugging at runtime and keep track of the call stack and memory allocation. The specific ways to do this depend on what IDE you use, I personally use VScode, so this tutorial will demonstrate that.
 
-The first step is to launch VSCode from within the zCFD virtual environment:
-
-```
-source $PATH_TO_ZCFD/bin/activate
-cd $PATH_TO_WORKING_DIRECTORY
-code .
-```
-This will ensure the VSCode python extension can correctly find the virtual environment to run zCFD from. 
-
-Next press `ctrl + shift + p` to bring up the command palate, and select "python: select interpreter". Here click the "find interpreter" option, and navigate to the `/bin/` folder in the zCFD distribution, and select the `python` executable (note not python3). At this point the bottom right tool bar should display "python3: ('zCFD...VIRTUAL_ENV...')".
+First step is to fire up VSCode and open the root folder of the zCFD director- you should be able to see all other files in the solver in the navigator from here.
+Next press `ctrl + shift + p` to bring up the command palate, and select "python: select interpreter". Here click the "find interpreter" option, and navigate to the `/bin/` folder in the zCFD distribution, and select the `run_python` executable (note not python3). At this point the bottom right tool bar should display "python3: ('zCFD...VIRTUAL_ENV...')".
 
 Finally navigate to the debugger panel, and select "create a launch.json file". In this file you will need to select launch, and make sure the program points to the `/bin/launch.py` file, additionally you need to supply arguments pointing to a test case mesh and control dictionary. An example working launch.json file is shown below.
 
+Best practice is to use absolute paths for the files, so `/home/user/docs/mesh.h5` etc... 
 ```
 {
     // Use IntelliSense to learn about possible attributes.

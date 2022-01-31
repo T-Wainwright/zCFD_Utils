@@ -19,7 +19,7 @@ import numpy as np
 import scipy.io
 import h5py
 import matplotlib.pyplot as plt
-import Wrappers.ATOM_Wrapper
+import zcfdutils.Wrappers.ATOM_Wrapper
 
 
 # Functions

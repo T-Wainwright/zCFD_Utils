@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import netCDF4
 import h5py
 import numpy as np
-from sets import Set
+# from sets import Set
 import sys
 import os
 
@@ -69,17 +69,17 @@ class Face(object):
         face_array[1] = self.right
         face_array[2] = self.zone
         for i in range(3, 7):
-            face_array[i] = self.nodes[i - 3]
+            face_array[i] = self.nodes[i-3]
 
     def from_array(self, face_array):
         self.left = face_array[0]
         self.right = face_array[1]
         self.zone = face_array[2]
         for i in range(3, 7):
-            self.nodes[i - 3] = face_array[i]
+            self.nodes[i-3] = face_array[i]
 
     def get_node(self, face_array, index):
-        return face_array[index + 3]
+        return face_array[index+3]
 
 
 class ProgressBar(object):
@@ -171,9 +171,9 @@ class TauTozCFD(object):
             N1 = points_of_surfacetriangles[i][0]
             N2 = points_of_surfacetriangles[i][1]
             N3 = points_of_surfacetriangles[i][2]
-            # f.nodes[0] = N1
-            # f.nodes[1] = N2
-            # f.nodes[2] = N3
+            #f.nodes[0] = N1
+            #f.nodes[1] = N2
+            #f.nodes[2] = N3
             f.nodes[0] = N3
             f.nodes[1] = N2
             f.nodes[2] = N1
@@ -186,7 +186,7 @@ class TauTozCFD(object):
 
             self.update_face_array(f)
 
-            self.progress.update(float(i) / len(self.num_surface_tri))
+            self.progress.update(float(i)/len(self.num_surface_tri))
 
     def surface_quads(self):
 
@@ -200,10 +200,10 @@ class TauTozCFD(object):
             N2 = points_of_surfacequadrilaterals[i][1]
             N3 = points_of_surfacequadrilaterals[i][2]
             N4 = points_of_surfacequadrilaterals[i][3]
-            # f.nodes[0] = N1
-            # f.nodes[1] = N2
-            # f.nodes[2] = N3
-            # f.nodes[3] = N4
+            #f.nodes[0] = N1
+            #f.nodes[1] = N2
+            #f.nodes[2] = N3
+            #f.nodes[3] = N4
             f.nodes[0] = N4
             f.nodes[1] = N3
             f.nodes[2] = N2
@@ -217,7 +217,7 @@ class TauTozCFD(object):
 
             self.update_face_array(f)
 
-            self.progress.update(float(i) / len(self.num_surface_quad))
+            self.progress.update(float(i)/len(self.num_surface_quad))
 
     def tetrahedra(self):
 
@@ -255,7 +255,7 @@ class TauTozCFD(object):
             self.update_face_array(f)
 
             # N1,N2,N4
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N1
             f.nodes[1] = N2
@@ -265,7 +265,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N2,N3,N4
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N2
             f.nodes[1] = N3
@@ -275,7 +275,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N3,N1,N4
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N3
             f.nodes[1] = N1
@@ -287,7 +287,7 @@ class TauTozCFD(object):
 
             self.num_cells += 1
 
-            self.progress.update(float(i) / len(self.num_tets))
+            self.progress.update(float(i)/len(self.num_tets))
 
     def prism(self):
 
@@ -326,7 +326,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N4,N5,N6
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N4
             f.nodes[1] = N5
@@ -336,7 +336,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N1,N2,N5,N4
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N1
             f.nodes[1] = N2
@@ -346,7 +346,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N2,N3,N6,N5
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N2
             f.nodes[1] = N3
@@ -356,7 +356,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N3,N1,N4,N6
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N3
             f.nodes[1] = N1
@@ -368,7 +368,7 @@ class TauTozCFD(object):
 
             self.num_cells += 1
 
-            self.progress.update(float(i) / len(self.num_prism))
+            self.progress.update(float(i)/len(self.num_prism))
 
     def pyramids(self):
 
@@ -408,7 +408,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N1,N2,N5
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N1
             f.nodes[1] = N2
@@ -418,7 +418,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N2,N3,N5
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N2
             f.nodes[1] = N3
@@ -428,7 +428,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N3,N4,N5
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N3
             f.nodes[1] = N4
@@ -438,7 +438,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N1,N4,N3,N2
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N1
             f.nodes[1] = N4
@@ -450,7 +450,7 @@ class TauTozCFD(object):
 
             self.num_cells += 1
 
-            self.progress.update(float(i) / len(self.num_pyramid))
+            self.progress.update(float(i)/len(self.num_pyramid))
 
     def hexahedra(self):
 
@@ -494,7 +494,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N1,N2,N6,N5
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N1
             f.nodes[1] = N2
@@ -504,7 +504,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N2,N3,N7,N6
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N2
             f.nodes[1] = N3
@@ -514,7 +514,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N3,N4,N8,N7
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N3
             f.nodes[1] = N4
@@ -524,7 +524,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N1,N5,N8,N4
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N1
             f.nodes[1] = N5
@@ -534,7 +534,7 @@ class TauTozCFD(object):
             # face_list.append(f)
             self.update_face_array(f)
             # N5,N6,N7,N8
-            # f = Face()
+            #f = Face()
             f.left = self.num_cells
             f.nodes[0] = N5
             f.nodes[1] = N6
@@ -546,29 +546,45 @@ class TauTozCFD(object):
 
             self.num_cells += 1
 
-            self.progress.update(float(i) / len(self.num_hex))
+            self.progress.update(float(i)/len(self.num_hex))
 
     def main(self, tau_mesh, zcfd_mesh):
 
         self.nc = netCDF4.Dataset(tau_mesh, 'r')
 
         self.num_elements = self.nc.dimensions['no_of_elements']
-        self.num_tets = self.nc.dimensions['no_of_tetraeders']
-        self.num_prism = self.nc.dimensions['no_of_prisms']
-        self.num_pyramid = self.nc.dimensions['no_of_pyramids']
-        self.num_hex = self.nc.dimensions['no_of_hexaeders']
+
+        nfaces = 0
+
+        if 'no_of_tetraeders' in self.nc.dimensions:
+            self.num_tets = self.nc.dimensions['no_of_tetraeders']
+            nfaces += 4*len(self.num_tets)
+
+        if 'no_of_prisms' in self.nc.dimensions:
+            self.num_prism = self.nc.dimensions['no_of_prisms']
+            nfaces += 5*len(self.num_prism)
+
+        if 'no_of_pyramids' in self.nc.dimensions:
+            self.num_pyramid = self.nc.dimensions['no_of_pyramids']
+            nfaces += 5*len(self.num_pyramid)
+
+        if 'no_of_hexaeders' in self.nc.dimensions:
+            self.num_hex = self.nc.dimensions['no_of_hexaeders']
+            nfaces += 6*len(self.num_hex)
 
         self.num_surface_elements = self.nc.dimensions['no_of_surfaceelements']
-        self.num_surface_tri = self.nc.dimensions['no_of_surfacetriangles']
-        self.num_surface_quad = self.nc.dimensions['no_of_surfacequadrilaterals']
+
+        if 'no_of_surfacetriangles' in self.nc.dimensions:
+            self.num_surface_tri = self.nc.dimensions['no_of_surfacetriangles']
+            nfaces += len(self.num_surface_tri)
+
+        if 'no_of_surfacequadrilaterals' in self.nc.dimensions:
+            self.num_surface_quad = self.nc.dimensions['no_of_surfacequadrilaterals']
+            nfaces += len(self.num_surface_quad)
+
         self.num_points = self.nc.dimensions['no_of_points']
 
-        self.face_array = np.empty((len(self.num_surface_tri) +
-                                    len(self.num_surface_quad) +
-                                    4 * len(self.num_tets) +
-                                    5 * len(self.num_prism) +
-                                    5 * len(self.num_pyramid) +
-                                    6 * len(self.num_hex), 7), dtype='i')
+        self.face_array = np.empty((nfaces, 7), dtype='i')
 
         self.progress = ProgressBar()
 
@@ -577,10 +593,12 @@ class TauTozCFD(object):
         self.face_count = 0
         self.num_cells = 0
 
-        self.surface_triangles()
+        if 'no_of_surfacetriangles' in self.nc.dimensions:
+            self.surface_triangles()
         print(" ")
         self.progress.reset()
-        self.surface_quads()
+        if 'no_of_surfacequadrilaterals' in self.nc.dimensions:
+            self.surface_quads()
         print(" ")
         self.progress.reset()
 
@@ -588,29 +606,33 @@ class TauTozCFD(object):
 
         boundarymarker_of_surfaces = self.nc.variables['boundarymarker_of_surfaces'][:]
 
-        self.zones = Set()
+        self.zones = set()
         for i in range(0, len(self.num_surface_elements)):
             z = boundarymarker_of_surfaces[i]
             self.face_array[i][2] = z
             self.zones.add(z)
 
-        print('Number of unique zones ') + str(len(self.zones))
-        self.tetrahedra()
+        print('Number of unique zones ' + str(len(self.zones)))
+        if 'no_of_tetraeders' in self.nc.dimensions:
+            self.tetrahedra()
         print(" ")
         self.progress.reset()
-        self.prism()
+        if 'no_of_prisms' in self.nc.dimensions:
+            self.prism()
         print(" ")
         self.progress.reset()
-        self.pyramids()
+        if 'no_of_pyramids' in self.nc.dimensions:
+            self.pyramids()
         print(" ")
         self.progress.reset()
-        self.hexahedra()
+        if 'no_of_hexaeders' in self.nc.dimensions:
+            self.hexahedra()
         print(" ")
         self.progress.reset()
 
-        num_faces = len(self.face_array) / 2
+        num_faces = len(self.face_array)/2
 
-        print('Number of faces: ') + str(num_faces)
+        print('Number of faces: ' + str(num_faces))
 
         print('Building node to face pointer')
         node_to_face = []
@@ -673,11 +695,11 @@ class TauTozCFD(object):
 
                 if not found:
                     print(f.nodes)
-                    # printf("%d %d %d %d %d\n",f.nodes[0],f.nodes[1],f.nodes[2],f.nodes[3],facelst.size());
+                    #printf("%d %d %d %d %d\n",f.nodes[0],f.nodes[1],f.nodes[2],f.nodes[3],facelst.size());
                     for i in range(0, len(node_to_face[n])):
                         nn = node_to_face[n][i]
                         # print face_list[nn].nodes
-                        # printf("%d %d %d %d %d\n",facelst[nn].nodes[0],facelst[nn].nodes[1],facelst[nn].nodes[2],facelst[nn].nodes[3],facelst[nn].zone);
+                        #printf("%d %d %d %d %d\n",facelst[nn].nodes[0],facelst[nn].nodes[1],facelst[nn].nodes[2],facelst[nn].nodes[3],facelst[nn].zone);
 
                 assert found
 
@@ -692,7 +714,7 @@ class TauTozCFD(object):
                 #    print len(f_list)
 
                 self.progress.update(
-                    float(num_faces - self.face_count / 2) / num_faces)
+                    float(num_faces-self.face_count/2) / num_faces)
 
         print(" ")
         self.progress.reset()
@@ -782,7 +804,7 @@ class TauTozCFD(object):
         name = os.path.split(tau_mesh)[1]
         basename = name.split('.')[0]
         bmap_filename = os.path.join(
-            os.path.split(tau_mesh)[0], basename + ".bmap")
+            os.path.split(tau_mesh)[0], basename+".bmap")
         if os.path.isfile(bmap_filename):
             bmap_file = open(bmap_filename)
 
@@ -793,7 +815,7 @@ class TauTozCFD(object):
         for i in range(0, num_faces):
             z = f_list[i].zone
             if z == -1:
-                for z in range(0, len(self.zones) + 1):
+                for z in range(0, len(self.zones)+1):
                     if z not in self.zones:
                         break
 
@@ -805,18 +827,22 @@ class TauTozCFD(object):
 
         cell_type = np.empty((len(self.num_elements)), dtype='i')
         count = 0
-        for i in range(0, len(self.num_tets)):
-            cell_type[count] = Cell.encode(Cell.TETRA, 4)
-            count += 1
-        for i in range(0, len(self.num_prism)):
-            cell_type[count] = Cell.encode(Cell.PRISM, 5)
-            count += 1
-        for i in range(0, len(self.num_pyramid)):
-            cell_type[count] = Cell.encode(Cell.PYRA, 5)
-            count += 1
-        for i in range(0, len(self.num_hex)):
-            cell_type[count] = Cell.encode(Cell.HEX, 6)
-            count += 1
+        if 'no_of_tetraeders' in self.nc.dimensions:
+            for i in range(0, len(self.num_tets)):
+                cell_type[count] = Cell.encode(Cell.TETRA, 4)
+                count += 1
+        if 'no_of_prisms' in self.nc.dimensions:
+            for i in range(0, len(self.num_prism)):
+                cell_type[count] = Cell.encode(Cell.PRISM, 5)
+                count += 1
+        if 'no_of_pyramids' in self.nc.dimensions:
+            for i in range(0, len(self.num_pyramid)):
+                cell_type[count] = Cell.encode(Cell.PYRA, 5)
+                count += 1
+        if 'no_of_hexaeders' in self.nc.dimensions:
+            for i in range(0, len(self.num_hex)):
+                cell_type[count] = Cell.encode(Cell.HEX, 6)
+                count += 1
 
         dset = self.grp.create_dataset(
             "cellType", (len(self.num_elements),), dtype='i')

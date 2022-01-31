@@ -22,3 +22,6 @@ abaqusfsi.py
 read_lke_bin.py
 rbf_caller.py
 .ipynb_checkpoints/
+build/
+.vscode/
+./pytest_cache

@@ -91,7 +91,7 @@ class atom_struct():
             Disp = Disp + QDisp[imode] * self.Eigvec[:, imode]
 
         Disp = np.concatenate((np.zeros(6), Disp))
-        Disp = np.reshape(Disp, (seselflf.n_s, 6))
+        Disp = np.reshape(Disp, (self.n_s, 6))
 
         return(Disp[:, :3] * 1.0e-0)
 

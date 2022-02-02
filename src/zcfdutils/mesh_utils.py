@@ -1311,7 +1311,7 @@ class zCFD_mesh:
         # Find nodes and boundary tags
         for i in range(n_face):
             surface_faceTag[i] = self.faceInfo[[surface_faceID[i]], 0]
-            for j in range(self.faceType[surface_faceID[i]]):
+            for j in range(self.faceType[surface_faceID[i]][0]):
                 index = index + 1
                 surface_faceNodes[index] = self.faceNodes[4 *
                                                           surface_faceID[i] + j, 0]
@@ -1346,6 +1346,13 @@ class zCFD_mesh:
         f.close()
 
         return
+
+    def dumpPoints(self, fname):
+        f = open(fname, 'w')
+        f.write('{}\n'.format(self.nodeVertex.shape[0]))
+        for i in range(self.nodeVertex.shape[0]):
+            f.write('{} {} {}\n'.format(self.nodeVertex[i, 0], self.nodeVertex[i, 1], self.nodeVertex[i, 2]))
+        f.close()
 
     def extractBoundaryNodes(self, zoneID):
         # returns a list of boundary node locations

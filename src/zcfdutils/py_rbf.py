@@ -38,35 +38,59 @@ class UoB_coupling():
         self.H = generate_transfer_matrix(
             self.mesh1_nodes, self.mesh2_nodes, r0, rbf, polynomial)
 
-    def inverse_distance_mapping_12(self, r0):
+    def idw_mapping_12(self, r0):
         # maps mesh 1 to 2 using inverse distance:
-        self.mapped_nodes = {}
+        self.mapped_nodes_12 = {}
         for i in range(self.n1):
             r_t = 0
-            self.mapped_nodes[i] = {}
+            self.mapped_nodes_12[i] = {}
             for j in range(self.n2):
                 rad = norm(self.mesh1_nodes[i, :] - self.mesh2_nodes[j, :])
                 if rad < r0 ** 2:
                     r = np.sqrt(rad)
-                    self.mapped_nodes[i][j] = r
+                    self.mapped_nodes_12[i][j] = r
                     r_t += r
 
-            for k in self.mapped_nodes[i].keys():
-                self.mapped_nodes[i][k] = self.mapped_nodes[i][k] / r_t
+            for k in self.mapped_nodes_12[i].keys():
+                self.mapped_nodes_12[i][k] = self.mapped_nodes_12[i][k] / r_t
 
-    def interp_mapping_12(self, f):
+    def idw_mapping_21(self, r0):
+        # maps mesh 1 to 2 using inverse distance:
+        self.mapped_nodes_21 = {}
+        for j in range(self.n2):
+            r_t = 0
+            self.mapped_nodes_21[i] = {}
+            for i in range(self.n1):
+                rad = norm(self.mesh1_nodes[i, :] - self.mesh2_nodes[j, :])
+                if rad < r0 ** 2:
+                    r = np.sqrt(rad)
+                    self.mapped_nodes_21[j][i] = r
+                    r_t += r
+
+            for k in self.mapped_nodes_21[i].keys():
+                self.mapped_nodes_21[j][k] = self.mapped_nodes_21[j][k] / r_t
+
+    def idw_interp_12(self, f):
         f_i = np.zeros((self.n1, 3))
-        for i in self.mapped_nodes.keys():
-            for j in self.mapped_nodes[i].keys():
-                f_i[i, :] += f[j, :] * self.mapped_nodes[i][j]
+        for i in self.mapped_nodes_12.keys():
+            for j in self.mapped_nodes_12[i].keys():
+                f_i[i, :] += f[j, :] * self.mapped_nodes_12[i][j]
 
         return f_i
 
-    def interp_12(self, U1):
+    def idw_interp_21(self, f):
+        f_i = np.zeros((self.n2, 3))
+        for i in self.mapped_nodes_21.keys():
+            for j in self.mapped_nodes_21[i].keys():
+                f_i[i, :] += f[j, :] * self.mapped_nodes_21[i][j]
+
+        return f_i
+
+    def rbf_interp_12(self, U1):
         U2 = rbf_interp(U1, self.H)
         return U2
 
-    def interp_21(self, U2):
+    def rbf_interp_21(self, U2):
         U1 = rbf_interp(U2, self.H.T)
         return U1
 

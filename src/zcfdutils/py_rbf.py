@@ -38,6 +38,30 @@ class UoB_coupling():
         self.H = generate_transfer_matrix(
             self.mesh1_nodes, self.mesh2_nodes, r0, rbf, polynomial)
 
+    def inverse_distance_mapping_12(self, r0):
+        # maps mesh 1 to 2 using inverse distance:
+        self.mapped_nodes = {}
+        for i in range(self.n1):
+            r_t = 0
+            self.mapped_nodes[i] = {}
+            for j in range(self.n2):
+                rad = norm(self.mesh1_nodes[i, :] - self.mesh2_nodes[j, :])
+                if rad < r0 ** 2:
+                    r = np.sqrt(rad)
+                    self.mapped_nodes[i][j] = r
+                    r_t += r
+
+            for k in self.mapped_nodes[i].keys():
+                self.mapped_nodes[i][k] = self.mapped_nodes[i][k] / r_t
+
+    def interp_mapping_12(self, f):
+        f_i = np.zeros((self.n1, 3))
+        for i in self.mapped_nodes.keys():
+            for j in self.mapped_nodes[i].keys():
+                f_i[i, :] += f[j, :] * self.mapped_nodes[i][j]
+
+        return f_i
+
     def interp_12(self, U1):
         U2 = rbf_interp(U1, self.H)
         return U2
@@ -70,10 +94,10 @@ def generate_transfer_matrix(mesh1, mesh2, r0, rbf='c2', polynomial=True):
     # Generate block matrix M (and P if polynomial) equations 11 and 12
     for i in range(n_2):
         for j in range(n_2):
-            # rad = np.linalg.norm(mesh2[i, :] - mesh2[j, :]) / r0
-            rad = anorm(mesh2[i, :] - mesh2[j, :]) / r0
+            rad = norm(mesh2[i, :] - mesh2[j, :]) / (r0 ** 2)
+            # rad = anorm(mesh2[i, :] - mesh2[j, :]) / r0
             if rad <= 1.0:
-                M_22[i][j] = rbf(rad)
+                M_22[i][j] = rbf(np.sqrt(rad))
         if polynomial:
             P_2[1:, i] = mesh2[i]
         if i % 1000 == 0:
@@ -84,13 +108,13 @@ def generate_transfer_matrix(mesh1, mesh2, r0, rbf='c2', polynomial=True):
     # Generate A_12 matrix- equation 13
     for i in range(n_1):
         for j in range(n_2):
-            # rad = np.linalg.norm(mesh1[i, :] - mesh2[j, :]) / r0
-            rad = anorm(mesh1[i, :] - mesh2[j, :]) / r0
+            rad = norm(mesh1[i, :] - mesh2[j, :]) / (r0 ** 2)
+            # rad = anorm(mesh1[i, :] - mesh2[j, :]) / r0
             if rad <= 1.0:
                 if polynomial:
-                    A_12[i][j + 4] = rbf(rad)
+                    A_12[i][j + 4] = rbf(np.sqrt(rad))
                 else:
-                    A_12[i][j] = rbf(rad)
+                    A_12[i][j] = rbf(np.sqrt(rad))
         if polynomial:
             A_12[i][1:4] = mesh1[i]
             A_12[i][0] = 1
@@ -135,8 +159,8 @@ def interp_forces(F_a, H):
     return F_s
 
 
-def rbf_interp(U1, H):
-    return H @ U1
+def rbf_interp(U, H):
+    return H @ U
 
 
 def c0(r):
@@ -163,4 +187,9 @@ def anorm(vec):
     bias = [1, 1, 0.1]
     r = np.sqrt((vec[0] * bias[0])**2 + (vec[1] * bias[1])
                 ** 2 + (vec[2] * bias[2])**2)
+    return r
+
+
+def norm(vec):
+    r = vec[0]**2 + vec[1]**2 + vec[2] ** 2
     return r

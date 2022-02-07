@@ -25,3 +25,4 @@ rbf_caller.py
 build/
 .vscode/
 ./pytest_cache
+*PKG-INFO

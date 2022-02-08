@@ -19,8 +19,8 @@ import matplotlib.pyplot as plt
 class atom_struct():
     # Wrapper to process ATOM structural data into a useful format for RBF work
     def __init__(self, bladeFE):
-        print('Loading FE structural data from {}'.format(fname))
-        self.BladeFE = scipy.io.loadmat(fname)['Blade_FE']
+        print('Loading FE structural data from {}'.format(bladeFE))
+        self.BladeFE = scipy.io.loadmat(bladeFE)['Blade_FE']
 
         temp = self.BladeFE['BeamAxis_123'][0][0]
 
@@ -71,15 +71,15 @@ class atom_struct():
     def deform_struct(self, F_s):
         # Rearrange F_s to match ATOM coordinate system
         F_s_atom = np.zeros_like(F_s)
-        F_s_atom[:, 0] = F_s[:, 1]
-        F_s_atom[:, 1] = F_s[:, 2]
-        F_s_atom[:, 2] = F_s[:, 0]
+        F_s_atom[:, 0] = F_s[:, 2]
+        F_s_atom[:, 1] = F_s[:, 0]
+        F_s_atom[:, 2] = F_s[:, 1]
 
         # Add means for factoring in moments here
 
         # Reshape F_s
         F_s_atom = np.concatenate((F_s_atom, np.zeros_like(F_s_atom)), axis=1)
-        F_s_atom = F_s_atom.flatten(order='F')
+        F_s_atom = F_s_atom.flatten(order='c')
 
         # Convert Nodal forces to modal forces
         FModal = np.matmul(np.transpose(self.Eigvec[:, 0:self.nEigval]), F_s_atom[6:])
@@ -93,7 +93,13 @@ class atom_struct():
         Disp = np.concatenate((np.zeros(6), Disp))
         Disp = np.reshape(Disp, (self.n_s, 6))
 
-        return(Disp[:, :3] * 1.0e-0)
+        Disp_zCFD = np.zeros_like(Disp)
+
+        Disp_zCFD[:, 0] = Disp[:, 1]
+        Disp_zCFD[:, 1] = Disp[:, 2]
+        Disp_zCFD[:, 2] = Disp[:, 0]
+
+        return(Disp_zCFD[:, :3] * 1.0e-0)
 
     def generate_test_deformation(self):
         # Return a parabolically deformed and twisted blade without the need for force application

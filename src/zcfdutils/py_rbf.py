@@ -59,7 +59,7 @@ class UoB_coupling():
         self.mapped_nodes_21 = {}
         for j in range(self.n2):
             r_t = 0
-            self.mapped_nodes_21[i] = {}
+            self.mapped_nodes_21[j] = {}
             for i in range(self.n1):
                 rad = norm(self.mesh1_nodes[i, :] - self.mesh2_nodes[j, :])
                 if rad < r0 ** 2:
@@ -67,11 +67,11 @@ class UoB_coupling():
                     self.mapped_nodes_21[j][i] = r
                     r_t += r
 
-            for k in self.mapped_nodes_21[i].keys():
+            for k in self.mapped_nodes_21[j].keys():
                 self.mapped_nodes_21[j][k] = self.mapped_nodes_21[j][k] / r_t
 
     def idw_interp_12(self, f):
-        f_i = np.zeros((self.n1, 3))
+        f_i = np.zeros((self.n2, 3))
         for i in self.mapped_nodes_12.keys():
             for j in self.mapped_nodes_12[i].keys():
                 f_i[i, :] += f[j, :] * self.mapped_nodes_12[i][j]
@@ -79,10 +79,10 @@ class UoB_coupling():
         return f_i
 
     def idw_interp_21(self, f):
-        f_i = np.zeros((self.n2, 3))
-        for i in self.mapped_nodes_21.keys():
-            for j in self.mapped_nodes_21[i].keys():
-                f_i[i, :] += f[j, :] * self.mapped_nodes_21[i][j]
+        f_i = np.zeros((self.n1, 3))
+        for i in self.mapped_nodes_21:
+            for j in self.mapped_nodes_21[i]:
+                f_i[j, :] += f[i, :] * self.mapped_nodes_21[i][j]
 
         return f_i
 

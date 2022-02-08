@@ -30,6 +30,7 @@ from zcfd.solvers.utils.RuntimeLoader import create_generic_fsi
 from zcfd.utils import config
 from zcfdutils import py_rbf
 from zcfdutils.Wrappers import ATOM_Wrapper
+import matplotlib.pyplot as plt
 
 
 def get_pressure_force(self):
@@ -71,10 +72,19 @@ def post_init(self):
     self.atom.load_modes(self.parameters['fsi']['user variables']['modal model'])
 
     self.rbf = py_rbf.UoB_coupling(self.atom.struct_nodes, flat_centres)
-    self.rbf.generate_transfer_matrix(self.parameters['fsi']['alpha'])
+    print('idw mapping 12')
+    self.rbf.idw_mapping_12(self.parameters['fsi']['alpha'])
+    print('idw mapping 21')
+    self.rbf.idw_mapping_21(self.parameters['fsi']['alpha'])
 
     self.rbf2 = py_rbf.UoB_coupling(flat_nodes, self.atom.struct_nodes)
     self.rbf2.generate_transfer_matrix(self.parameters['fsi']['alpha'])
+
+    if 'fsi convergence plot' in self.parameters['fsi']['user variables']:
+        self.time_record = []
+        self.disp_x = []
+        self.disp_y = []
+        self.disp_z = []
 
     if self.rank == 0:
         # rank 0 tasks
@@ -93,11 +103,13 @@ def start_real_time_cycle(self):
     dt = self.real_time_step
     if self.rank == 0:
         # rank 0 tasks
-        structural_force = self.rbf.interp_12(pressure_force)
+        structural_force = self.rbf.idw_interp_21(pressure_force)
         disp = self.atom.deform_struct(structural_force)
-        aero_disp = self.rbf2.interp_12(disp)
+        aero_disp = self.rbf2.rbf_interp_12(disp)
         u = list(aero_disp.flatten())
-        
+
+        plt.plot(self.atom.struct_nodes[:, 2], structural_force[:, 0])
+        plt.savefig('test.png')        
 
     u = MPI.COMM_WORLD.bcast(u, root=0)
     dt = MPI.COMM_WORLD.bcast(dt, root=0)
@@ -106,22 +118,95 @@ def start_real_time_cycle(self):
 
 
 def post_advance(self):
-    # initialise displacement list
-    u = [0.0 * ii for ii in range(self.num_nodes * 3)]
-    pressure_force = get_pressure_force(self)
-    dt = self.real_time_step
-    if self.rank == 0:
-        # rank 0 tasks
-        structural_force = self.rbf.interp_12(pressure_force)
-        disp = self.atom.deform_struct(structural_force)
-        aero_disp = self.rbf2.interp_12(disp)
-        u = list(aero_disp.flatten())
-        
+    if self.total_cycles % self.parameters['fsi']['user variables']['fsi frequency'] == 0:
+        # initialise displacement list
+        u = [0.0 * ii for ii in range(self.num_nodes * 3)]
+        pressure_force = get_pressure_force(self)
+        dt = self.real_time_step
+        if self.rank == 0:
+            # rank 0 tasks
+            structural_force = self.rbf.idw_interp_21(pressure_force)
+            disp = self.atom.deform_struct(structural_force)
+            aero_disp = self.rbf2.rbf_interp_12(disp)
+            u = list(aero_disp.flatten())
 
-    u = MPI.COMM_WORLD.bcast(u, root=0)
-    dt = MPI.COMM_WORLD.bcast(dt, root=0)
-    # Perform RBF and mesh updates
-    self.fsi.deform_mesh(self.mesh[0], u, dt)
+            if self.parameters['fsi']['user variables']['debug flags'] or 'interpolation plot' in self.parameters['fsi']['user variables']:
+                sum_pressure_force = [sum(pressure_force[:, 0]), sum(pressure_force[:, 1]), sum(pressure_force[:, 2])]
+                sum_structural_force = [sum(structural_force[:, 0]), sum(structural_force[:, 1]), sum(structural_force[:, 2])]
+
+            if 'fsi convergence plot' in self.parameters['fsi']['user variables']:
+                # customise plot of convergence of FSI scheme
+                self.time_record.append(self.total_cycles)
+                self.disp_x.append(disp[-1, 0])
+                self.disp_y.append(disp[-1, 1])
+                self.disp_z.append(disp[-1, 2])
+                
+                fig, ax = plt.subplots(3, 2)
+                ax[0, 0].clear()
+                ax[0, 0].set_title('Deformed blade shape')
+                ax[0, 0].set_xlabel('z')
+                ax[0, 0].set_ylabel('disp_x')
+                ax[0, 0].plot(self.atom.struct_nodes[:, 2], disp[:, 0])
+
+                ax[1, 0].clear()
+                ax[1, 0].set_xlabel('z')
+                ax[1, 0].set_ylabel('disp_y')
+                ax[1, 0].plot(self.atom.struct_nodes[:, 2], disp[:, 1])
+
+                ax[2, 0].clear()
+                ax[2, 0].set_xlabel('z')
+                ax[2, 0].set_ylabel('disp_z')
+                ax[2, 0].plot(self.atom.struct_nodes[:, 2], disp[:, 2])
+
+                ax[0, 1].set_title('Tip deflection')
+                ax[0, 1].plot(self.time_record, self.disp_x, linestyle='solid')
+                ax[0, 1].set_xlabel('iteration')
+                ax[0, 1].set_ylabel('disp_x')
+
+                ax[1, 1].plot(self.time_record, self.disp_y, linestyle='solid')
+                ax[1, 1].set_xlabel('iteration')
+                ax[1, 1].set_ylabel('disp_x')
+
+                ax[2, 1].plot(self.time_record, self.disp_z, linestyle='solid')
+                ax[2, 1].set_xlabel('iteration')
+                ax[2, 1].set_ylabel('disp_x')
+                fig.suptitle('FSI Convergence')
+                fig.tight_layout()
+                fig.savefig(self.parameters['fsi']['user variables']['fsi convergence plot'])
+
+            if 'interpolation plot' in self.parameters['fsi']['user variables']:
+                fig, ax = plt.subplots(3)
+                ax[0].plot(self.atom.struct_nodes[:, 2], structural_force[:, 0])
+                ax[0].set_xlabel('z')
+                ax[0].set_ylabel('f_x')
+                ax[0].set_title('sum f_x = {} N'.format(sum_structural_force[0]))
+
+                ax[1].plot(self.atom.struct_nodes[:, 2], structural_force[:, 1])
+                ax[1].set_xlabel('z')
+                ax[1].set_ylabel('f_y')
+                ax[1].set_title('sum f_y = {} N'.format(sum_structural_force[1]))
+
+
+                ax[2].plot(self.atom.struct_nodes[:, 2], structural_force[:, 2])
+                ax[2].set_xlabel('z')
+                ax[2].set_ylabel('f_z')
+                ax[2].set_title('sum f_z = {} N'.format(sum_structural_force[2]))
+
+                
+                fig.suptitle('Force interpolation')
+                fig.tight_layout()
+                fig.savefig(self.parameters['fsi']['user variables']['interpolation plot'])
+                
+            if self.parameters['fsi']['user variables']['debug flags']:
+                # Dump any readouts you want if debug flags are on
+                print('tip deflection = {} {} {}'.format(disp[-1, 0], disp[-1, 1], disp[-1, 2]))
+                print('pressure force = {} {} {}'.format(sum_pressure_force[0], sum_pressure_force[1], sum_pressure_force[2]))
+                print('structural force = {} {} {}'.format(sum_structural_force[0], sum_structural_force[1], sum_structural_force[2]))
+
+        u = MPI.COMM_WORLD.bcast(u, root=0)
+        dt = MPI.COMM_WORLD.bcast(dt, root=0)
+        # Perform RBF and mesh updates
+        self.fsi.deform_mesh(self.mesh[0], u, dt)
 
 
 def post_solve(self):

@@ -35,7 +35,7 @@ class atom_struct():
         self.n_s = self.struct_nodes.shape[0]
 
         print('Adding FSI ribs')
-        self.add_struct_ribs(1)
+        self.add_struct_ribs(5)
 
     def add_struct_ribs(self, rib_length):
         self.rib_nodes = np.zeros((self.n_s * 4, 3))
@@ -54,11 +54,54 @@ class atom_struct():
     def plot_struct(self):
         fig = plt.figure()
         ax = plt.axes(projection='3d')
-        ax.plot(self.struct_nodes[:, 0], self.struct_nodes[:, 1], self.struct_nodes[:, 2], 'b.')
-        ax.plot(self.rib_nodes[:, 0], self.rib_nodes[:, 1], self.rib_nodes[:, 2], 'r.')
+        ax.plot(
+            self.struct_nodes[:, 0], self.struct_nodes[:, 1], self.struct_nodes[:, 2], 'b.')
+        ax.plot(self.rib_nodes[:, 0], self.rib_nodes[:,
+                1], self.rib_nodes[:, 2], 'r.')
         set_axes_equal(ax)
         ax.set_xlabel('x')
         ax.set_ylabel('y')
+        plt.show()
+
+    def write_beamstick_tec(self):
+        f = open('beamstick.dat', 'w')
+        f.write("TITLE = \"Beamstick Model\" \n")
+        f.write("VARIABLES = \"X\" \"Y\" \"Z\" \n")
+        f.write("ZONE T= \"Undeformed Struct\", DATAPACKING=POINT, NODES={}, ELEMENTS={}, ZONETYPE=FELINESEG\n".format(
+            self.n_s * 5, self.n_s * 5 - 1))
+        for i in range(self.n_s):
+            f.write('{} {} {}\n'.format(
+                self.struct_nodes[i, 0], self.struct_nodes[i, 1], self.struct_nodes[i, 2]))
+            for j in range(4):
+                f.write('{} {} {}\n'.format(
+                    self.rib_nodes[i * 4 + j, 0], self.rib_nodes[i * 4 + j, 1], self.rib_nodes[i * 4 + j, 2]))
+
+        for i in range(self.n_s):
+            for j in range(4):
+                f.write('{} {}\n'.format(5 * i + 1, 5 * i + 2 + j))
+            if i != self.n_s - 1:
+                f.write('{} {}\n'.format(5 * i + 1, 5 * (i + 1) + 1))
+        f.close()
+
+    def write_deformed_beamstick_tec(self, U_s):
+        f = open('beamstick_deformed.dat', 'w')
+        f.write("TITLE = \"Beamstick Model\" \n")
+        f.write("VARIABLES = \"X\" \"Y\" \"Z\" \n")
+        f.write("ZONE T= \"Undeformed Struct\", DATAPACKING=POINT, NODES={}, ELEMENTS={}, ZONETYPE=FELINESEG\n".format(
+            self.n_s * 5, self.n_s * 5 - 1))
+        for i in range(self.n_s):
+            f.write('{} {} {}\n'.format(
+                self.struct_nodes[i, 0] + U_s[i, 0], self.struct_nodes[i, 1] + U_s[i, 1], self.struct_nodes[i, 2] + U_s[i, 2]))
+            for j in range(4):
+                f.write('{} {} {}\n'.format(self.rib_nodes[i * 4 + j, 0] + U_s[4 * i + self.n_s + j, 0], self.rib_nodes[i *
+                        4 + j, 1] + U_s[4 * i + self.n_s + j, 1], self.rib_nodes[i * 4 + j, 2] + U_s[4 * i + self.n_s + j, 2]))
+
+        for i in range(self.n_s):
+            for j in range(4):
+                f.write('{} {}\n'.format(5 * i + 1, 5 * i + 2 + j))
+            if i != self.n_s - 1:
+                f.write('{} {}\n'.format(5 * i + 1, 5 * (i + 1) + 1))
+        f.close()
 
     def load_modes(self, fname):
         print('Loading Modal data from {}'.format(fname))
@@ -82,7 +125,8 @@ class atom_struct():
         F_s_atom = F_s_atom.flatten(order='c')
 
         # Convert Nodal forces to modal forces
-        FModal = np.matmul(np.transpose(self.Eigvec[:, 0:self.nEigval]), F_s_atom[6:])
+        FModal = np.matmul(np.transpose(
+            self.Eigvec[:, 0:self.nEigval]), F_s_atom[6:])
 
         QDisp = np.matmul(self.KmodalInv, FModal)
         Disp = np.zeros([self.Eigvec.shape[0]])
@@ -99,7 +143,9 @@ class atom_struct():
         Disp_zCFD[:, 1] = Disp[:, 2]
         Disp_zCFD[:, 2] = Disp[:, 0]
 
-        return(Disp_zCFD[:, :3] * 1.0e-0)
+        return_disp = self.deform_ribs(Disp_zCFD[:, :3])
+
+        return(np.r_[Disp_zCFD[:, :3], return_disp] * 1.0e-0)
 
     def generate_test_deformation(self):
         # Return a parabolically deformed and twisted blade without the need for force application
@@ -123,27 +169,36 @@ class atom_struct():
             # rib_disps[i * 4 + 2, :] = disp[i, :3] + np.matmul(np.array([0, 1, 0]), np.matmul(R_x(disp[i, 3]), np.matmul(R_y(disp[i, 4]), R_z(disp[i, 5]))))
             # rib_disps[i * 4 + 3, :] = disp[i, :3] + np.matmul(np.array([0, -1, 0]), np.matmul(R_x(disp[i, 3]), np.matmul(R_y(disp[i, 4]), R_z(disp[i, 5]))))
 
-            rib_disps[i * 4 + 0, :] = (np.matmul(np.array([1, 0, 0]), R_z(np.pi / 2)) + self.struct_nodes[i, :])
-            rib_disps[i * 4 + 1, :] = (np.matmul(np.array([-1, 0, 0]), R_z(np.pi / 2)) + self.struct_nodes[i, :])
-            rib_disps[i * 4 + 2, :] = (np.matmul(np.array([0, 1, 0]), R_z(np.pi / 2)) + self.struct_nodes[i, :])
-            rib_disps[i * 4 + 3, :] = (np.matmul(np.array([0, -1, 0]), R_z(np.pi / 2)) + self.struct_nodes[i, :])
+            # rib_disps[i * 4 + 0, :] = (np.matmul(np.array([1, 0, 0]), R_z(np.pi / 2)) + self.struct_nodes[i, :])
+            # rib_disps[i * 4 + 1, :] = (np.matmul(np.array([-1, 0, 0]), R_z(np.pi / 2)) + self.struct_nodes[i, :])
+            # rib_disps[i * 4 + 2, :] = (np.matmul(np.array([0, 1, 0]), R_z(np.pi / 2)) + self.struct_nodes[i, :])
+            # rib_disps[i * 4 + 3, :] = (np.matmul(np.array([0, -1, 0]), R_z(np.pi / 2)) + self.struct_nodes[i, :])
+
+            rib_disps[i * 4 + 0, :] = disp[i, :3]
+            rib_disps[i * 4 + 1, :] = disp[i, :3]
+            rib_disps[i * 4 + 2, :] = disp[i, :3]
+            rib_disps[i * 4 + 3, :] = disp[i, :3]
 
         return rib_disps
 
     def plot_deformed_struct(self, disp, rib_disp):
         fig = plt.figure()
         ax = plt.axes(projection='3d')
-        ax.plot(self.struct_nodes[:, 0], self.struct_nodes[:, 1], self.struct_nodes[:, 2], 'b.')
-        ax.plot(self.rib_nodes[:, 0], self.rib_nodes[:, 1], self.rib_nodes[:, 2], 'b.')
-        ax.plot(self.struct_nodes[:, 0] + disp[:, 0], self.struct_nodes[:, 1] + disp[:, 1], self.struct_nodes[:, 2] + disp[:, 2], 'r.')
-        ax.plot(self.rib_nodes[:, 0] + rib_disp[:, 0], self.rib_nodes[:, 1] + rib_disp[:, 1], self.rib_nodes[:, 2] + rib_disp[:, 2], 'r.')
+        ax.plot(
+            self.struct_nodes[:, 0], self.struct_nodes[:, 1], self.struct_nodes[:, 2], 'b.')
+        ax.plot(self.rib_nodes[:, 0], self.rib_nodes[:,
+                1], self.rib_nodes[:, 2], 'b.')
+        ax.plot(self.struct_nodes[:, 0] + disp[:, 0], self.struct_nodes[:,
+                1] + disp[:, 1], self.struct_nodes[:, 2] + disp[:, 2], 'r.')
+        ax.plot(self.rib_nodes[:, 0] + rib_disp[:, 0], self.rib_nodes[:, 1] +
+                rib_disp[:, 1], self.rib_nodes[:, 2] + rib_disp[:, 2], 'r.')
         ax.plot(disp[:, 0], disp[:, 1], disp[:, 2], 'g.')
         ax.plot(rib_disp[:, 0], rib_disp[:, 1], rib_disp[:, 2], 'g.')
         set_axes_equal(ax)
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.legend(['original', 'deformed', 'deformation'])
-        plt.show()
+        plt.savefig('struct.png', format='png')
 
     def write_deformed_struct(self, U_s):
         # Dump out record of deformed structure
@@ -183,15 +238,18 @@ def set_axes_equal(ax):
 
 
 def R_z(a):
-    R_z = np.array([[np.cos(a), -np.sin(a), 0], [np.sin(a), np.cos(a), 0], [0, 0, 1]])
+    R_z = np.array([[np.cos(a), -np.sin(a), 0],
+                   [np.sin(a), np.cos(a), 0], [0, 0, 1]])
     return R_z
 
 
 def R_y(b):
-    R_y = np.array([[np.cos(b), 0, np.sin(b)], [0, 1, 0], [-np.sin(b), 0, np.cos(b)]])
+    R_y = np.array([[np.cos(b), 0, np.sin(b)], [
+                   0, 1, 0], [-np.sin(b), 0, np.cos(b)]])
     return R_y
 
 
 def R_x(c):
-    R_x = np.array([[1, 0, 0], [0, np.cos(c), -np.sin(c)], [0, np.sin(c), np.cos(c)]])
+    R_x = np.array([[1, 0, 0], [0, np.cos(c), -np.sin(c)],
+                   [0, np.sin(c), np.cos(c)]])
     return R_x

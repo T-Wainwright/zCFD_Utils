@@ -10,15 +10,17 @@ University of Bristol
 tom.wainwright@bristol.ac.uk
 """
 
+import struct
 import numpy as np
 import scipy.io
 import h5py
 import matplotlib.pyplot as plt
+import pandas as pd
 
 
 class atom_struct():
     # Wrapper to process ATOM structural data into a useful format for RBF work
-    def __init__(self, bladeFE):
+    def __init__(self, bladeFE, **kwargs):
         print('Loading FE structural data from {}'.format(bladeFE))
         self.BladeFE = scipy.io.loadmat(bladeFE)['Blade_FE']
 
@@ -36,6 +38,18 @@ class atom_struct():
 
         print('Adding FSI ribs')
         self.add_struct_ribs(5)
+
+        if 'fsi report' in kwargs:
+            headers = ['cycle', 'disp_x', 'disp_y', 'disp_z']
+            self.report_path = kwargs['fsi report']
+            fsi_report = pd.DataFrame(columns=headers)
+            fsi_report.to_csv(self.report_path)
+
+        if 'fsi convergence plot' in kwargs:
+            self.time_record = []
+            self.disp_x = []
+            self.disp_y = []
+            self.disp_z = []
 
     def add_struct_ribs(self, rib_length):
         self.rib_nodes = np.zeros((self.n_s * 4, 3))
@@ -62,6 +76,74 @@ class atom_struct():
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         plt.show()
+
+    def plot_fsi_convergence(self, total_cycles, disp, fname):
+        self.time_record.append(total_cycles)
+        self.disp_x.append(disp[-1, 0])
+        self.disp_y.append(disp[-1, 1])
+        self.disp_z.append(disp[-1, 2])
+
+        fig, ax = plt.subplots(3, 2)
+        ax[0, 0].clear()
+        ax[0, 0].set_title('Deformed blade shape')
+        ax[0, 0].set_xlabel('z')
+        ax[0, 0].set_ylabel('disp_x')
+        ax[0, 0].plot(
+            self.struct_nodes[0:self.n_s, 2], disp[0:self.n_s, 0])
+
+        ax[1, 0].clear()
+        ax[1, 0].set_xlabel('z')
+        ax[1, 0].set_ylabel('disp_y')
+        ax[1, 0].plot(
+            self.struct_nodes[0:self.n_s, 2], disp[0:self.n_s, 1])
+
+        ax[2, 0].clear()
+        ax[2, 0].set_xlabel('z')
+        ax[2, 0].set_ylabel('disp_z')
+        ax[2, 0].plot(
+            self.struct_nodes[0:self.n_s, 2], disp[0:self.n_s, 2])
+
+        ax[0, 1].set_title('Tip deflection')
+        ax[0, 1].plot(self.time_record, self.disp_x, linestyle='solid')
+        ax[0, 1].set_xlabel('iteration')
+        ax[0, 1].set_ylabel('disp_x')
+
+        ax[1, 1].plot(self.time_record, self.disp_y, linestyle='solid')
+        ax[1, 1].set_xlabel('iteration')
+        ax[1, 1].set_ylabel('disp_y')
+
+        ax[2, 1].plot(self.time_record, self.disp_z, linestyle='solid')
+        ax[2, 1].set_xlabel('iteration')
+        ax[2, 1].set_ylabel('disp_z')
+        fig.suptitle('FSI Convergence')
+        fig.tight_layout()
+        fig.savefig(fname)
+
+    def plot_fsi_interpolation(self, struct_force, sum, fname):
+        fig, ax = plt.subplots(3)
+        ax[0].plot(self.struct_nodes[:, 2], struct_force[:, 0])
+        ax[0].set_xlabel('z')
+        ax[0].set_ylabel('f_x')
+        ax[0].set_title('sum f_x = {} N'.format(sum[0]))
+
+        ax[1].plot(self.struct_nodes[:, 2], struct_force[:, 1])
+        ax[1].set_xlabel('z')
+        ax[1].set_ylabel('f_y')
+        ax[1].set_title('sum f_y = {} N'.format(sum[1]))
+
+        ax[2].plot(self.struct_nodes[:, 2], struct_force[:, 2])
+        ax[2].set_xlabel('z')
+        ax[2].set_ylabel('f_z')
+        ax[2].set_title('sum f_z = {} N'.format(sum[2]))
+
+        fig.suptitle('Force interpolation')
+        fig.tight_layout()
+        fig.savefig(fname)
+
+    def update_fsi_report(self, cycle, disp):
+        line = [cycle, disp[0], disp[1], disp[2]]
+        df = pd.DataFrame(line)
+        df.to_csv(self.report_path, mode='a', header=False)
 
     def write_beamstick_tec(self):
         f = open('beamstick.dat', 'w')

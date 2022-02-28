@@ -4,6 +4,23 @@ This guide is intended for those picking up zCFD for the first time without any 
 
 It assumes 0 knowledge of interacting with CFD solvers before, however it asssumes a basic knowledge of the linux filesystem, and particularly how to navigate it using the terminal. Knowledge of commands such as `ls, cd, pwd, cp, mv, rm` etc is assumed, more information on them can be found [here](https://help.ubuntu.com/community/UsingTheTerminal).
 
+## Installing zCFD
+---
+
+1. Download zCFD from [here](https://zcfd.zenotech.com/download)
+
+2. Unpack the download file:
+```
+./zCFD-icc-sse-impi-2021.11.765-Linux-64bit.sh
+```
+- If this doesn't work, you may need to make the file executable:
+```
+chmod u+x zCFD-icc-sse-impi-2021.11.765-Linux-64bit.sh
+```
+
+3. Copy the license file emailed to you/ provided into the `$PATH_TO_ZCFD/lic/` folder.
+
+
 ## The zCFD virtual environment
 ---
 

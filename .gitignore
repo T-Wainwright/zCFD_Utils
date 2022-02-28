@@ -27,3 +27,7 @@ build/
 ./pytest_cache
 *PKG-INFO
 Modal_data.h5
+*OUTPUT*
+*.log
+*report.ipynb
+*results.h5*

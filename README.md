@@ -52,3 +52,4 @@ pip install .
   *  2D NACA0012 Aerofoil
   *  3D MDO Wing
   *  3D Caradonna Tung rotor
+  *  3D DPW5 Case (Advanced)

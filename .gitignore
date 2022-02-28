@@ -1,4 +1,4 @@
-*.h5
+data/*.h5
 !MDO_125K.h5
 *.plt
 *.lke
@@ -16,8 +16,18 @@
 *.m
 *.tec
 *.txt
+*.eps
 CT8_5M.blk
 abaqusfsi.py
 read_lke_bin.py
 rbf_caller.py
 .ipynb_checkpoints/
+build/
+.vscode/
+./pytest_cache
+*PKG-INFO
+Modal_data.h5
+*OUTPUT*
+*.log
+*report.ipynb
+*results.h5*

@@ -2,22 +2,46 @@
 
 This guide is intended for those picking up zCFD for the first time without any prior knowledge of experience with CFD solvers. It should get you to a point where you can run your first jobs both locally, and on a cluster, then view and post process your results, both locally, and from a cluster.
 
+It assumes 0 knowledge of interacting with CFD solvers before, however it asssumes a basic knowledge of the linux filesystem, and particularly how to navigate it using the terminal. Knowledge of commands such as `ls, cd, pwd, cp, mv, rm` etc is assumed, more information on them can be found [here](https://help.ubuntu.com/community/UsingTheTerminal).
+
+## Installing zCFD
+---
+
+1. Download zCFD from [here](https://zcfd.zenotech.com/download)
+
+2. Unpack the download file:
+```
+./zCFD-icc-sse-impi-2021.11.765-Linux-64bit.sh
+```
+- If this doesn't work, you may need to make the file executable:
+```
+chmod u+x zCFD-icc-sse-impi-2021.11.765-Linux-64bit.sh
+```
+
+3. Copy the license file emailed to you/ provided into the `$PATH_TO_ZCFD/lic/` folder.
+
+
 ## The zCFD virtual environment
 ---
 
-zCFD runs in it's own python virtual environment. This means it should be fully self contained, with all modules and libraries shipped as is. In order to launch the virtual environment, run:
+zCFD runs in it's own python virtual environment. This means it should be fully self contained, with all modules and libraries shipped as is. In order to launch the virtual environment, run the following source command:
 
 ```
 source $PATH_TO_ZCFD/bin/activate
 ```
 
-This must be run from outside the virtual environment, personally I set an alias in my `.bash_aliases` or `.bashrc` to do this automatically:
+This must be run from outside the zCFD folder, personally I set an [alias](https://linuxize.com/post/how-to-create-bash-aliases/) in my `.bash_aliases` or `.bashrc` to do this automatically:
 
 ```
 alias zcfd="$PATH_TO_ZCFD/bin/activate"  
 ```
 
-The `$` symbol preceeding `PATH_TO_ZCFD` indicates it is just an *environment variable*, and is simply the file address of the zCFD root directory. You can get it very simply by navigating to the root directory and running `pwd`, which will print the path to the current directory you are in.
+The `$` symbol preceeding `PATH_TO_ZCFD` indicates it is just an *environment variable*, and is simply the file address of the zCFD root directory. You can get it very simply by navigating to the root directory and running `pwd`, which will print the path to the current directory you are in:
+
+```
+pwd
+/home/user/Documents/apps/zcfd/zCFD-icc-sse-impi-2021.05.120-Linux-64bit
+```
 
 Once in the zcfd virtual environment the command line should gain the zCFD prefix as see below.
 
@@ -27,7 +51,7 @@ Once in the zcfd virtual environment the command line should gain the zCFD prefi
 ## Running locally
 ---
 
-To run zCFD, invoke the smart use the Smartlaunch command:
+To run zCFD, use the Smartlaunch command:
 
 ```
 run_zcfd --ntask 10 -p $PROBLEM_NAME -c $CASE_NAME
@@ -230,19 +254,12 @@ To connect to this server on the VSCode Jupyer extension open the remote .ipynb 
 
 It is possible to attach a python debugger to the solver, so that you can perform live debugging at runtime and keep track of the call stack and memory allocation. The specific ways to do this depend on what IDE you use, I personally use VScode, so this tutorial will demonstrate that.
 
-The first step is to launch VSCode from within the zCFD virtual environment:
-
-```
-source $PATH_TO_ZCFD/bin/activate
-cd $PATH_TO_WORKING_DIRECTORY
-code .
-```
-This will ensure the VSCode python extension can correctly find the virtual environment to run zCFD from. 
-
-Next press `ctrl + shift + p` to bring up the command palate, and select "python: select interpreter". Here click the "find interpreter" option, and navigate to the `/bin/` folder in the zCFD distribution, and select the `python` executable (note not python3). At this point the bottom right tool bar should display "python3: ('zCFD...VIRTUAL_ENV...')".
+First step is to fire up VSCode and open the root folder of the zCFD director- you should be able to see all other files in the solver in the navigator from here.
+Next press `ctrl + shift + p` to bring up the command palate, and select "python: select interpreter". Here click the "find interpreter" option, and navigate to the `/bin/` folder in the zCFD distribution, and select the `run_python` executable (note not python3). At this point the bottom right tool bar should display "python3: ('zCFD...VIRTUAL_ENV...')".
 
 Finally navigate to the debugger panel, and select "create a launch.json file". In this file you will need to select launch, and make sure the program points to the `/bin/launch.py` file, additionally you need to supply arguments pointing to a test case mesh and control dictionary. An example working launch.json file is shown below.
 
+Best practice is to use absolute paths for the files, so `/home/user/docs/mesh.h5` etc... 
 ```
 {
     // Use IntelliSense to learn about possible attributes.

@@ -1,5 +1,0 @@
-{
-    "python.linting.pycodestyleEnabled": true,
-    "python.venvPath": "/home/tom/Documents/University/Coding/zCFD-icc-sse-impi-2021.02.120-Linux-64bit/bin/python3",
-    "jupyter.jupyterServerType": "local"
-}

@@ -1,4 +1,4 @@
-*.h5
+data/*.h5
 !MDO_125K.h5
 *.plt
 *.lke
@@ -26,3 +26,4 @@ build/
 .vscode/
 ./pytest_cache
 *PKG-INFO
+Modal_data.h5

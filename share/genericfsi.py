@@ -51,6 +51,7 @@ def get_pressure_force(self):
 
 
 def post_init(self):
+    print('Post init')
     self.fsi = create_generic_fsi(
         self.solverlib, self.parameters['case name'], self.parameters['problem name'], self.parameters)
 
@@ -66,16 +67,17 @@ def post_init(self):
     nodes = self.fsi.get_fsi_nodes(self.mesh[0])
     face_nodes = self.fsi.get_fsi_face_nodes()  # face nodes ALL QUADS CURRENTLY
 
+    # if self.rank == 0:
+    # rank 0 tasks
+
+    self.num_nodes = int(len(nodes) / 3)
+    normals = self.fsi.get_faceNormals(self.mesh[0])
+    centres = self.fsi.get_faceCentres(self.mesh[0])
+
+    flat_centres = np.reshape(centres, (int(len(centres) / 3), 3))
+    flat_nodes = np.reshape(nodes, ((self.num_nodes, 3)))
+
     if self.rank == 0:
-        # rank 0 tasks
-
-        self.num_nodes = int(len(nodes) / 3)
-        normals = self.fsi.get_faceNormals(self.mesh[0])
-        centres = self.fsi.get_faceCentres(self.mesh[0])
-
-        flat_centres = np.reshape(centres, (int(len(centres) / 3), 3))
-        flat_nodes = np.reshape(nodes, ((self.num_nodes, 3)))
-
         self.atom = ATOM_Wrapper.atom_struct(
             self.parameters['fsi']['user variables']['blade fe'], **self.parameters['fsi']['user variables'])
         self.atom.struct_nodes[:, 2] = self.atom.struct_nodes[:,
@@ -102,7 +104,6 @@ def post_init(self):
             self.disp_x = []
             self.disp_y = []
             self.disp_z = []
-
         self.node_labels = self.fsi.get_fsi_node_labels()
 
     MPI.COMM_WORLD.Barrier()
@@ -196,7 +197,7 @@ def post_advance(self):
         dt = MPI.COMM_WORLD.bcast(dt, root=0)
         # Perform RBF and mesh updates
         print(max(u))
-        self.fsi.deform_mesh(self.mesh[0], u, dt, True)
+        self.fsi.deform_mesh(self.mesh[0], u, dt, False)
 
 
 def post_solve(self):

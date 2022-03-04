@@ -31,3 +31,5 @@ Modal_data.h5
 *.log
 *report.ipynb
 *results.h5*
+*.log.*
+*.hex.h5

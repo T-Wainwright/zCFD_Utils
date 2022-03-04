@@ -34,12 +34,12 @@ parameters = {
             'name': 'runge kutta',
             'stage': 5,
         },
-        'multigrid': 1,
+        # 'multigrid': 1,
         'multigrid cycles': 2000,
-        'cfl': 2.5,
+        'cfl': 1.5,
         'cfl transport': 1.0,
         'cfl coarse': 1.0,
-        'cfl ramp factor': {'initial': 0.05, 'growth': 1.01},
+        'cfl ramp factor': {'initial': 0.1, 'growth': 1.01},
         'cycles': 5000,
     },
 
@@ -63,7 +63,7 @@ parameters = {
     # },
 
     'RANS': {
-        'order': 'second',
+        'order': 'first',
         'limiter': 'vanalbada',
         'precondition': False,
         'turbulence': {
@@ -131,6 +131,6 @@ parameters = {
         'format': 'vtk',
                   'surface variables': ['V', 'p', 'T', 'rho', 'cp', 'pressureforce', 'pressuremoment', 'pressuremomentx', 'pressuremomenty'],
                   'volume variables': ['V', 'p', 'T', 'rho', 'mach', 'cp'],
-        'frequency': 1000,
+        'frequency': 100,
     },
 }

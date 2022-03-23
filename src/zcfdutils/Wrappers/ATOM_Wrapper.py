@@ -20,11 +20,11 @@ import pandas as pd
 
 class atom_struct():
     # Wrapper to process ATOM structural data into a useful format for RBF work
-    def __init__(self, bladeFE, **kwargs):
-        print('Loading FE structural data from {}'.format(bladeFE))
-        self.BladeFE = scipy.io.loadmat(bladeFE)['Blade_FE']
+    def __init__(self, ATOM_FE, **kwargs):
+        print('Loading FE structural data from {}'.format(ATOM_FE))
+        self.ATOM_FE = scipy.io.loadmat(ATOM_FE)['FE']
 
-        temp = self.BladeFE['BeamAxis_123'][0][0]
+        temp = self.ATOM_FE['Blade'][0][0]['BeamAxis_123'][0][0]
 
         self.struct_nodes = np.zeros_like(temp)
 
@@ -185,9 +185,9 @@ class atom_struct():
                 f.write('{} {}\n'.format(5 * i + 1, 5 * (i + 1) + 1))
         f.close()
 
-    def load_modes(self, fname):
-        print('Loading Modal data from {}'.format(fname))
-        self.ModalStruct = scipy.io.loadmat(fname)['Modal_Struct']
+    def load_modes(self):
+        print('Loading Modal data')
+        self.ModalStruct = self.ATOM_FE['Blade'][0][0]['Modal'][0][0]
 
         self.nEigval = self.ModalStruct['nEigval'][0][0][0][0]
         self.Eigvec = self.ModalStruct['Eigvec'][0][0]

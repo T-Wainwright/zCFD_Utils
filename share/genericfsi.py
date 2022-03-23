@@ -82,21 +82,20 @@ def post_init(self):
             self.parameters['fsi']['user variables']['blade fe'], **self.parameters['fsi']['user variables'])
         self.atom.struct_nodes[:, 2] = self.atom.struct_nodes[:,
                                                               2] + 3 * np.ones_like(self.atom.struct_nodes[:, 2])
-        self.atom.load_modes(
-            self.parameters['fsi']['user variables']['modal model'])
+        self.atom.load_modes()
 
         self.atom.plot_struct()
         self.atom.write_beamstick_tec()
 
         self.rbf = py_rbf.UoB_coupling(
-            self.atom.struct_nodes, flat_centres[:2560, :])
+            self.atom.struct_nodes, flat_centres)
         print('idw mapping 12')
-        self.rbf.idw_mapping_12(10)
+        self.rbf.idw_mapping_12(20)
         print('idw mapping 21')
         self.rbf.idw_mapping_21(10)
 
         moving_struct = np.r_[self.atom.struct_nodes, self.atom.rib_nodes]
-        self.rbf2 = py_rbf.UoB_coupling(flat_nodes[:2581, :], moving_struct)
+        self.rbf2 = py_rbf.UoB_coupling(flat_nodes, moving_struct)
         self.rbf2.generate_transfer_matrix(10)
 
         if 'fsi convergence plot' in self.parameters['fsi']['user variables']:
@@ -134,6 +133,7 @@ def start_real_time_cycle(self):
             self.atom.update_fsi_report(self.total_cycles, list(disp[-1, :]))
 
     u = MPI.COMM_WORLD.bcast(u, root=0)
+    print(len(u))
     dt = MPI.COMM_WORLD.bcast(dt, root=0)
     # Perform RBF and mesh updates
     self.fsi.deform_mesh(self.mesh[0], u, dt, False)
@@ -170,7 +170,7 @@ def post_advance(self):
 
             if 'interpolation plot' in self.parameters['fsi']['user variables']:
                 self.atom.plot_fsi_interpolation(
-                    self, structural_force, sum_structural_force, self.parameters['fsi']['user variables']['interpolation plot'])
+                    structural_force, sum_structural_force, self.parameters['fsi']['user variables']['interpolation plot'])
 
             if self.parameters['fsi']['user variables']['debug flags']:
                 # Dump any readouts you want if debug flags are on

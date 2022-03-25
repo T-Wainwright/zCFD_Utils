@@ -31,6 +31,7 @@ from zcfd.utils import config
 from zcfdutils import py_rbf
 from zcfdutils.Wrappers import ATOM_Wrapper
 import matplotlib.pyplot as plt
+from sklearn.cluster import MiniBatchKMeans
 
 
 def get_pressure_force(self):
@@ -97,6 +98,8 @@ def post_init(self):
         moving_struct = np.r_[self.atom.struct_nodes, self.atom.rib_nodes]
         self.rbf2 = py_rbf.UoB_coupling(flat_nodes, moving_struct)
         self.rbf2.generate_transfer_matrix(10)
+
+        self.rbf.agglomorate(1000)
 
         if 'fsi convergence plot' in self.parameters['fsi']['user variables']:
             self.time_record = []

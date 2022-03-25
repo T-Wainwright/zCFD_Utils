@@ -20,6 +20,7 @@ import scipy.io
 import h5py
 import matplotlib.pyplot as plt
 import zcfdutils.Wrappers.ATOM_Wrapper
+from sklearn.cluster import MiniBatchKMeans
 
 
 # Functions
@@ -37,6 +38,19 @@ class UoB_coupling():
         # Will generate H12 matrix
         self.H = generate_transfer_matrix(
             self.mesh1_nodes, self.mesh2_nodes, r0, rbf, polynomial)
+
+    def agglomorate(self, nclusters):
+        cluster = MiniBatchKMeans(n_clusters=nclusters)
+        self.agglomoration = cluster.fit(self.mesh2_nodes)
+
+        u_labels = np.unique(self.agglomoration.labels_)
+        fig = plt.figure()
+        ax = fig.add_subplot()
+        for i in u_labels:
+            ax.scatter(self.mesh2_nodes[self.agglomoration.labels_ == i, 2],
+                       self.mesh2_nodes[self.agglomoration.labels_ == i, 1])
+            print(i)
+        fig.savefig('test.png', format='png')
 
     def idw_mapping_12(self, r0):
         # maps mesh 1 to 2 using inverse distance:

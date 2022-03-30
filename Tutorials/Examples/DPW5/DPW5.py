@@ -104,7 +104,7 @@ parameters = {
         # 'ref' : 3,
         'zone': wall,
         'type': 'wall',
-        'kind': 'noslip',
+        'kind': 'wallfunction',
     },
     'BC_3': {
         # 'ref' : 9,

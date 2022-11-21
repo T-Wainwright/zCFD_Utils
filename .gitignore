@@ -34,3 +34,4 @@ Modal_data.h5
 *.log.*
 *.hex.h5
 */build/
+!CMakeLists.txt

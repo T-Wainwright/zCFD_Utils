@@ -33,3 +33,4 @@ Modal_data.h5
 *results.h5*
 *.log.*
 *.hex.h5
+*/build/

@@ -67,10 +67,7 @@ def post_init(self):
     # x, y, z of nodes on fsi surface
     nodes = self.fsi.get_fsi_nodes(self.mesh[0])
     face_nodes = self.fsi.get_fsi_face_nodes()  # face nodes ALL QUADS CURRENTLY
-
-    # if self.rank == 0:
-    # rank 0 tasks
-
+    
     self.num_nodes = int(len(nodes) / 3)
     normals = self.fsi.get_faceNormals(self.mesh[0])
     centres = self.fsi.get_faceCentres(self.mesh[0])
@@ -78,6 +75,7 @@ def post_init(self):
     flat_centres = np.reshape(centres, (int(len(centres) / 3), 3))
     flat_nodes = np.reshape(nodes, ((self.num_nodes, 3)))
 
+    # Rank 0 tasks
     if self.rank == 0:
         self.atom = ATOM_Wrapper.atom_struct(
             self.parameters['fsi']['user variables']['blade fe'], **self.parameters['fsi']['user variables'])

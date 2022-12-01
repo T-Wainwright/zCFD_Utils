@@ -4,6 +4,7 @@ from scipy import sparse
 from scipy.linalg import lu_factor, lu_solve
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KDTree
+import time
 
 
 class MultiScale():
@@ -53,7 +54,8 @@ class MultiScale():
             if parent_weighting:
                 # if searching base set, find the node with the max separation from the last added node
                 if n_active < self.nb:
-                    iMax = np.argmax([parent.count(i) for i in active_list])
+                    children = [parent.count(i) for i in active_list]
+                    iMax = np.argmax(children)
                     for i, p in enumerate(parent):
                         if p != active_list[iMax]:
                             sep_dist_temp[i] = -1
@@ -250,11 +252,11 @@ if __name__ == "__main__":
     start = time.time()
 
     X = np.loadtxt(
-        '../../data/surface.xyz', skiprows=1)
+        '/home/tom/Documents/University/Coding/zCFD_Utils/data/surface.xyz', skiprows=1)
     V = np.loadtxt(
-        '../../data/volume.xyz', skiprows=1)
+        '/home/tom/Documents/University/Coding/zCFD_Utils/data/volume.xyz', skiprows=1)
     dX = np.loadtxt(
-        '../../data/displacements.xyz', skiprows=1)
+        '/home/tom/Documents/University/Coding/zCFD_Utils/data/displacements.xyz', skiprows=1)
 
     nb = 0.1
     r = 4
@@ -263,11 +265,16 @@ if __name__ == "__main__":
     rot_vector = np.array(
         [[np.cos(t), -np.sin(t), 0], [np.sin(t), np.cos(t), 0], [0, 0, 1]])
 
-    dX = X @ rot_vector - X
+    # dX = X @ rot_vector - X
 
     M = MultiScale(X, nb, r)
 
-    M.sequence_control_points()
+    M.sequence_control_points(parent_weighting=True)
+
+    # M2 = MultiScale(X, nb, r)
+    # M2.sequence_control_points(parent_weighting=False)
+
+    # print("done")
 
     M.multiscale_solve(dX)
 

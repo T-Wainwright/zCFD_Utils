@@ -40,5 +40,4 @@ message(STATUS "Boost_LIBRARIES = ${Boost_LIBRARIES}")
 INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
 LINK_LIBRARIES(${Boost_LIBRARIES} ${PYTHON_LIBRARIES}) # Deprecated but so convenient!
 
-PYTHON_ADD_MODULE(hello hello.cpp)
 PYTHON_ADD_MODULE(multiscale multiscale.cpp)

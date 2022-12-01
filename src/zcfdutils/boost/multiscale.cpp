@@ -25,6 +25,8 @@ struct multiscale
         ncp = X.rows();
         r0 = base_radii;
 
+        reordered = false;
+
         // run  checks
         if (nb > ncp)
         {
@@ -33,7 +35,7 @@ struct multiscale
         }
     };
 
-    void sample_control_points()
+    void sample_control_points(bool parental_preference = true)
     {
         std::vector<int> inactive_list(ncp);
         std::iota(inactive_list.begin(), inactive_list.end(), 0);
@@ -95,14 +97,14 @@ struct multiscale
             for (int i = 0; i < ncp; ++i)
             {
                 inactive_node = ret_indexes[i];
-                if (out_dists_sqr[i] < (sep_dist[inactive_node] * abs(sep_dist[inactive_node]))) // needed this way to ensure negative eliminated values stay the away
+                if (out_dists_sqr[i] < sep_dist[inactive_node]) // needed this way to ensure negative eliminated values stay the away
                 {
-                    sep_dist[inactive_node] = sqrt(out_dists_sqr[i]);
+                    sep_dist[inactive_node] = out_dists_sqr[i];
                     parent[inactive_node] = active_node;
                 };
             };
 
-            if (0)
+            if (parental_preference)
             {
                 copy(sep_dist.begin(), sep_dist.end(), back_inserter(sep_dist_temp));
 
@@ -137,8 +139,6 @@ struct multiscale
             active_list(n_active) = active_node;
             remove(inactive_list.begin(), inactive_list.end(), active_node);
 
-            // parent[active_node] = active_node;
-
             if (n_active < nb)
             {
                 radii(active_node) = r0;
@@ -146,14 +146,16 @@ struct multiscale
             }
             else
             {
-                radii(active_node) = sep_dist[active_node];
+                radii(active_node) = sqrt(sep_dist[active_node]);
                 remaining_set.push_back(active_node);
             };
 
             sep_dist[active_node] = -1e10;
 
+            // free up unused memory
             ret_indexes.clear();
             out_dists_sqr.clear();
+            query_pt.clear();
 
             children.clear();
             sep_dist_temp.clear();
@@ -213,19 +215,45 @@ struct multiscale
         std::cout.flush();
     }
 
-    Matrix_t build_phi_b()
+    void build_phi_b()
     {
-        Matrix_t phi_b(nb, nb);
+        phi_b.resize(nb, nb);
         double r, e, coef;
+
+        int query_node;
+
+        Matrix_t X_base = X.block(0, 0, nb, 3);
+
+        // create tree
+
+        using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
+        my_kd_tree_t X_tree(3, std::cref(X_base), 20);
+
+        std::vector<double> query_pt(3);
+
+        std::vector<size_t> ret_indexes(nb);
+        std::vector<double> out_dists_sqr(nb);
+        nanoflann::KNNResultSet<double> resultsSet(nb);
+
+        // cycle through initial set
         for (int i = 0; i < nb; ++i)
         {
+            resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
+
+            for (int j = 0; j < 3; ++j)
+            {
+                query_pt[j] = double(X_base(i, j));
+            }
+
+            X_tree.index->findNeighbors(resultsSet, &query_pt[0]);
+
             for (int j = 0; j < nb; ++j)
             {
-                r = (X.row(base_set[i]) - X.row(base_set[j])).squaredNorm();
-                e = r / pow(radii[base_set[j]], 2);
+                query_node = ret_indexes[j];
+                e = out_dists_sqr[j] / pow(radii[query_node], 2);
                 if (e <= 1.0)
                 {
-                    phi_b(i, j) = c2(sqrt(e));
+                    phi_b(i, query_node) = c2(sqrt(e));
                 }
             };
         };
@@ -240,32 +268,54 @@ struct multiscale
                 phi_b(j, i) = coef;
             };
         };
-        return phi_b;
     }
 
-    Matrix_t build_phi_r()
+    void build_phi_r()
     {
-        Matrix_t phi_r(ncp - nb, nb);
+        phi_r.resize(ncp - nb, nb);
         double r, e;
-        int base_node, remaining_node;
-        for (int i = 0; i < remaining_set.size(); ++i)
+        int query_node;
+
+        Matrix_t X_remaining = X.block(nb, 0, ncp - nb, 3);
+
+        // build tree
+
+        using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
+        my_kd_tree_t X_tree(3, std::cref(X_remaining), 20);
+
+        std::vector<double> query_pt(3);
+
+        std::vector<size_t> ret_indexes(ncp - nb);
+        std::vector<double> out_dists_sqr(ncp - nb);
+        nanoflann::KNNResultSet<double> resultsSet(ncp - nb);
+
+        for (int i = 0; i < nb; ++i)
         {
-            for (int j = 0; j < base_set.size(); ++j)
+            resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
+
+            for (int j = 0; j < 3; ++j)
             {
-                remaining_node = remaining_set[i];
-                base_node = base_set[j];
-                r = (X.row(base_node) - X.row(remaining_node)).squaredNorm();
-                e = r / pow(radii[base_node], 2);
+                // set query point to be i'th base node
+                query_pt[j] = double(X(i, j));
+            }
+
+            // query remaining set vs base node
+            X_tree.index->findNeighbors(resultsSet, &query_pt[0]);
+
+            for (int j = 0; j < ncp - nb; ++j)
+            {
+                query_node = ret_indexes[j];
+                r = out_dists_sqr[j];
+                e = r / pow(radii[i], 2);
                 if (e <= 1.0)
                 {
-                    phi_r(i, j) = c2(sqrt(e));
+                    phi_r(query_node, i) = c2(sqrt(e));
                 }
             }
         }
-        return phi_r;
     }
 
-    Eigen::SparseMatrix<double> build_LCSC()
+    void build_LCSC()
     {
         std::vector<Eigen::Triplet<double>> triplet_list;
         int p, q;
@@ -285,16 +335,15 @@ struct multiscale
                 }
             }
         }
-        Eigen::SparseMatrix<double> LCSC(ncp - nb, ncp - nb);
+        LCSC.resize(ncp - nb, ncp - nb);
         LCSC.setFromTriplets(triplet_list.begin(), triplet_list.end());
         LCSC.makeCompressed();
-        return LCSC;
     }
 
     void reorder()
     {
         Matrix_t X_new(ncp, 3);
-        Matrix_t dX_new(ncp, 3);
+        Matrix_t dX_new(ncp, ncol);
         Eigen::VectorXd radii_new(ncp);
         int active_node;
 
@@ -322,25 +371,37 @@ struct multiscale
 
         std::iota(base_set.begin(), base_set.end(), 0);
         std::iota(remaining_set.begin(), remaining_set.end(), nb);
+
+        reordered = true;
     }
 
     void multiscale_solve(Matrix_t dX_input)
     {
         dX = dX_input;
-        reorder();
-        Matrix_t phi_b = build_phi_b();
-        Matrix_t phi_r = build_phi_r();
-        Eigen::SparseMatrix<double> LCRC = build_LCSC();
+        ncol = dX.cols();
 
-        Matrix_t a_base = solve_b(phi_b);
-        a = solve_remaining(phi_r, LCRC, a_base);
+        if (not reordered)
+        {
+            reorder();
+        }
+        if (not built)
+        {
+            build_phi_b();
+            build_phi_r();
+            build_LCSC();
+            built = true;
+        }
+
+        Matrix_t a_base = solve_b();
+        std::cout << a_base << std::endl;
+        a = solve_remaining(a_base);
     }
 
-    Matrix_t solve_b(Matrix_t phi_b)
+    Matrix_t solve_b()
     {
-        Matrix_t base_dX(nb, 3);
+        Matrix_t base_dX(nb, ncol);
 
-        base_dX = dX.block(0, 0, nb, 3);
+        base_dX = dX.block(0, 0, nb, ncol);
         Eigen::LLT<Matrix_t> llt;
         llt.compute(phi_b);
         Matrix_t a_base = llt.solve(base_dX);
@@ -349,31 +410,24 @@ struct multiscale
         return a_base;
     }
 
-    Matrix_t solve_remaining(Matrix_t phi_r, Eigen::SparseMatrix<double> LCRC, Matrix_t a_base)
+    Matrix_t solve_remaining(Matrix_t a_base)
     {
         int ptr;
         double c;
 
-        Matrix_t dX_res(ncp, 3);
-        for (int i = 0; i < ncp; ++i)
-        {
-            for (int j = 0; j < 3; ++j)
-            {
-                dX_res(i, j) = dX(i, j);
-            }
-        }
-        dX_res.block(nb, 0, ncp - nb, 3) = dX_res.block(nb, 0, ncp - nb, 3) - phi_r * a_base;
+        Matrix_t dX_res = dX;
+        dX_res.block(nb, 0, ncp - nb, ncol) = dX_res.block(nb, 0, ncp - nb, ncol) - phi_r * a_base;
 
-        Matrix_t coef(ncp, 3);
-        coef.block(0, 0, nb, 3) = a_base;
+        Matrix_t coef(ncp, ncol);
+        coef.block(0, 0, nb, ncol) = a_base;
 
         for (int i = 0; i < remaining_set.size(); ++i)
         {
             coef.row(i + nb) << dX_res.row(i + nb);
-            for (int j = LCRC.outerIndexPtr()[i]; j < LCRC.outerIndexPtr()[i + 1]; ++j)
+            for (int j = LCSC.outerIndexPtr()[i]; j < LCSC.outerIndexPtr()[i + 1]; ++j)
             {
-                ptr = LCRC.innerIndexPtr()[j];
-                c = LCRC.valuePtr()[j];
+                ptr = LCSC.innerIndexPtr()[j];
+                c = LCSC.valuePtr()[j];
                 dX_res.row(ptr + nb) = dX_res.row(ptr + nb) - c * coef.row(i + nb);
             }
         }
@@ -416,7 +470,7 @@ struct multiscale
         double r, e, c;
         int q;
 
-        dV.resize(nv, 3);
+        dV.resize(nv, ncol);
         dV.setZero();
 
         for (int i = 0; i < nv; ++i)
@@ -501,12 +555,14 @@ struct multiscale
     Eigen::VectorXd tree_dist;
     Eigen::VectorXi tree_ind;
 
-    int nb, ncp, nv;
+    int nb, ncp, nv, ncol;
     double r0;
-    Matrix_t a, dV, X, V, dX;
+    Matrix_t a, dV, X, V, dX, phi_b, phi_r;
     Eigen::VectorXi active_list;
     std::vector<int> base_set, remaining_set, psi_v_rowptr, psi_v_col_index;
+    Eigen::SparseMatrix<double> LCSC;
     Eigen::VectorXd radii;
+    bool reordered, built;
 };
 
 BOOST_PYTHON_MODULE(multiscale)

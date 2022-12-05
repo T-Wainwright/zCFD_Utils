@@ -321,19 +321,41 @@ struct multiscale
         int p, q;
         double r, e;
 
+        Matrix_t X_remaining = X.block(nb, 0, ncp - nb, 3);
+
+        using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
+        my_kd_tree_t X_tree(3, std::cref(X_remaining), 20);
+        X_tree.index->buildIndex();
+
+        std::vector<double> query_pt(3);
+        size_t nMatches;
+        nanoflann::SearchParameters params;
+        std::vector<std::pair<Eigen::Index, double>> matches;
+
+        X_tree.index->buildIndex();
+
         for (int i = 0; i < remaining_set.size(); ++i)
         {
-            p = remaining_set[i];
-            for (int j = 0; j < i + 1; ++j)
+            for (int j = 0; j < 3; ++j)
             {
-                q = remaining_set[j];
-                r = (X.row(p) - X.row(q)).squaredNorm();
+                query_pt[j] = X_remaining(i, j);
+            }
+
+            const double search_radius = radii[remaining_set[i]];
+
+            const size_t nMatches = X_tree.index->radiusSearch(&query_pt[0], search_radius, matches, params);
+
+            for (int j = 0; j < nMatches; ++j)
+            {
+                q = matches[j].first;
+                r = matches[j].second;
                 e = r / pow(radii[q], 2);
                 if (e <= 1.0)
                 {
-                    triplet_list.push_back(Eigen::Triplet<double>(i, j, c2(sqrt(e))));
+                    triplet_list.push_back(Eigen::Triplet<double>(i, q, c2(sqrt(e))));
                 }
             }
+            std::cout << "test" << std::endl;
         }
         LCSC.resize(ncp - nb, ncp - nb);
         LCSC.setFromTriplets(triplet_list.begin(), triplet_list.end());

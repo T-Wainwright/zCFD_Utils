@@ -106,6 +106,7 @@ struct multiscale
 
             if (parental_preference)
             {
+                // still doesn't work
                 copy(sep_dist.begin(), sep_dist.end(), back_inserter(sep_dist_temp));
 
                 if (n_active < nb)
@@ -163,36 +164,6 @@ struct multiscale
             progress_bar(n_active);
 
             n_active++;
-        }
-    }
-
-    void test_tree(int query_node)
-    {
-        using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
-        my_kd_tree_t X_tree(3, std::cref(X), 10);
-
-        std::vector<double> query_pt(3);
-
-        std::vector<size_t> ret_indexes(ncp);
-        std::vector<double> out_dists_sqr(ncp);
-        nanoflann::KNNResultSet<double> resultsSet(ncp);
-
-        resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
-
-        tree_dist.resize(ncp);
-        tree_ind.resize(ncp);
-
-        for (int i = 0; i < 3; ++i)
-        {
-            query_pt[i] = double(X(query_node, i));
-        }
-
-        X_tree.index->findNeighbors(resultsSet, &query_pt[0]);
-
-        for (int i = 0; i < ncp; ++i)
-        {
-            tree_dist(i) = sqrt(out_dists_sqr[i]);
-            tree_ind(i) = ret_indexes[i];
         }
     }
 
@@ -355,7 +326,6 @@ struct multiscale
                     triplet_list.push_back(Eigen::Triplet<double>(i, q, c2(sqrt(e))));
                 }
             }
-            std::cout << "test" << std::endl;
         }
         LCSC.resize(ncp - nb, ncp - nb);
         LCSC.setFromTriplets(triplet_list.begin(), triplet_list.end());
@@ -415,7 +385,6 @@ struct multiscale
         }
 
         Matrix_t a_base = solve_b();
-        std::cout << a_base << std::endl;
         a = solve_remaining(a_base);
     }
 
@@ -600,7 +569,6 @@ BOOST_PYTHON_MODULE(multiscale)
         .def("multiscale_solve", &multiscale::multiscale_solve)
         .def("preprocess_V", &multiscale::preprocess_V)
         .def("multiscale_transfer", &multiscale::multiscale_transfer)
-        .def("test_tree", &multiscale::test_tree)
         .def("get_X", &multiscale::get_X, py::return_value_policy<py::copy_const_reference>())
         .def("get_a", &multiscale::get_a, py::return_value_policy<py::copy_const_reference>())
         .def("get_dV", &multiscale::get_dV, py::return_value_policy<py::copy_const_reference>())

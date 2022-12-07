@@ -1,5 +1,4 @@
 import numpy as np
-import mesh_utils
 from scipy import sparse
 from scipy.linalg import lu_factor, lu_solve
 import matplotlib.pyplot as plt

@@ -42,3 +42,10 @@ class cba_modal():
             row_ctr += self.n_pts + 1
 
         self.grid = np.loadtxt(fname, skiprows=row_ctr, max_rows=self.n_pts)
+
+    def write_grid_tec(self, fname):
+        f = open(fname, "w")
+        for i in range(self.n_pts):
+            f.write("{}, {}, {}\n".format(
+                self.grid[i, 0], self.grid[i, 1], self.grid[i, 2]))
+        f.close()

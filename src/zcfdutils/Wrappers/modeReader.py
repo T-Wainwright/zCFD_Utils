@@ -1,5 +1,4 @@
 import numpy as np
-import boost.build.multiscale
 
 # class to read cba modal results file
 
@@ -49,3 +48,16 @@ class cba_modal():
             f.write("{}, {}, {}\n".format(
                 self.grid[i, 0], self.grid[i, 1], self.grid[i, 2]))
         f.close()
+
+    def write_grid_csv(self, fname):
+        f = open(fname, 'w')
+        f.write("X, Y, Z, mx, my, mz\n")
+        # dump points file
+        for i in range(self.n_pts):
+            f.write('{}, {}, {}, {}, {}, {}\n'.format(self.grid[i, 0], self.grid[i, 1],
+                    self.grid[i, 2], self.eigenvectors[0, i, 0], self.eigenvectors[0, i, 1], self.eigenvectors[0, i, 2]))
+        f.close()
+
+    def calculate_mode_frequencies(self):
+        self.mode_frequencies = np.array(
+            [np.sqrt(i) for i in self.eigenvalues])

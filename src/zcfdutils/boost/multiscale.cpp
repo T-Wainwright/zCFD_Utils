@@ -239,6 +239,8 @@ struct multiscale
                 phi_b(j, i) = coef;
             };
         };
+
+        phi_b_llt.compute(phi_b);
     }
 
     void build_phi_r()
@@ -393,9 +395,7 @@ struct multiscale
         Matrix_t base_dX(nb, ncol);
 
         base_dX = dX.block(0, 0, nb, ncol);
-        Eigen::LLT<Matrix_t> llt;
-        llt.compute(phi_b);
-        Matrix_t a_base = llt.solve(base_dX);
+        Matrix_t a_base = phi_b_llt.solve(base_dX);
         std::cout << "Solved base set" << std::endl;
 
         return a_base;
@@ -543,8 +543,25 @@ struct multiscale
         return tree_dist;
     }
 
+    void set_active_list(Eigen::VectorXd py_active_list)
+    {
+        // need this extra bit of code to get around python resizing integers
+        int num_entries = py_active_list.size();
+        active_list.resize(num_entries);
+        for (int i = 0; i < num_entries; ++i)
+        {
+            active_list(i) = int(py_active_list(i));
+        }
+    }
+
+    void set_radii(Eigen::VectorXd py_radii)
+    {
+        radii = py_radii;
+    }
+
     Eigen::VectorXd tree_dist;
     Eigen::VectorXi tree_ind;
+    Eigen::LLT<Matrix_t> phi_b_llt;
 
     int nb, ncp, nv, ncol;
     double r0;
@@ -561,19 +578,22 @@ BOOST_PYTHON_MODULE(multiscale)
     Py_Initialize();
     np::initialize();
 
-    pygen::convert<double>(pygen::Converters::All);
-    pygen::convert<int>(pygen::Converters::All);
+    pygen::convert<double>(pygen::Converters::All, false);
+    pygen::convert<int>(pygen::Converters::All, false);
 
     class_<multiscale>("multiscale", init<Matrix_t, int, double>())
         .def("sample_control_points", &multiscale::sample_control_points)
         .def("multiscale_solve", &multiscale::multiscale_solve)
         .def("preprocess_V", &multiscale::preprocess_V)
         .def("multiscale_transfer", &multiscale::multiscale_transfer)
+
         .def("get_X", &multiscale::get_X, py::return_value_policy<py::copy_const_reference>())
         .def("get_a", &multiscale::get_a, py::return_value_policy<py::copy_const_reference>())
         .def("get_dV", &multiscale::get_dV, py::return_value_policy<py::copy_const_reference>())
         .def("get_radii", &multiscale::get_radii, py::return_value_policy<py::copy_const_reference>())
         .def("get_active_list", &multiscale::get_active_list, py::return_value_policy<py::copy_const_reference>())
         .def("get_tree_dist", &multiscale::get_tree_dist, py::return_value_policy<py::copy_const_reference>())
-        .def("get_tree_ind", &multiscale::get_tree_ind, py::return_value_policy<py::copy_const_reference>());
+        .def("get_tree_ind", &multiscale::get_tree_ind, py::return_value_policy<py::copy_const_reference>())
+        .def("set_active_list", &multiscale::set_active_list)
+        .def("set_radii", &multiscale::set_radii);
 }

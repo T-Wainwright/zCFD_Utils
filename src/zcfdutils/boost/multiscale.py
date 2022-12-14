@@ -50,4 +50,7 @@ print(M.get_active_list())
 print(M.get_a())
 print(dV)
 # print(dv)
-plt.show()
+# plt.show()
+
+base = M.get_base_set()
+print(base)

@@ -51,11 +51,19 @@ class cba_modal():
 
     def write_grid_csv(self, fname):
         f = open(fname, 'w')
-        f.write("X, Y, Z, mx, my, mz\n")
+        f.write("X, Y, Z, ")
+        for i in range(self.num_modes):
+            f.write("m{}X, m{}Y, m{}Z, ".format(i, i, i))
+        f.write("\n")
         # dump points file
         for i in range(self.n_pts):
-            f.write('{}, {}, {}, {}, {}, {}\n'.format(self.grid[i, 0], self.grid[i, 1],
-                    self.grid[i, 2], self.eigenvectors[0, i, 0], self.eigenvectors[0, i, 1], self.eigenvectors[0, i, 2]))
+            f.write('{}, {}, {}, '.format(
+                self.grid[i, 0], self.grid[i, 1], self.grid[i, 2]))
+            for j in range(self.num_modes):
+                for k in range(3):
+                    f.write('{}, '.format(self.eigenvectors[j, i, k]))
+            f.write('\n')
+
         f.close()
 
     def calculate_mode_frequencies(self):

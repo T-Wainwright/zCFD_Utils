@@ -27,7 +27,7 @@ class MultiScale():
 
         # Grab first control point
         active_node = inactive_list[0]
-        sep_dist[active_node] = -1e10
+        # sep_dist[active_node] = -1e10
         active_list.append(active_node)
         inactive_list.remove(active_node)
         base_set.append(active_node)
@@ -41,11 +41,16 @@ class MultiScale():
         # Cycle over remaining points
 
         while n_active < self.np:
-            dist, ind = X_tree.query(
-                [self.X[active_node]], self.np)
+            ind, dist = X_tree.query_radius(
+                [self.X[active_node]], sep_dist[active_node], return_distance=True)
+            # dist, ind = X_tree.query(
+            #     [self.X[active_node]], self.np)
+
+            sep_dist[active_node] = -1e-10
+
             for i, p in enumerate(ind[0]):
-                if dist[0, i] < sep_dist[p]:
-                    sep_dist[p] = dist[0, i]
+                if dist[0][i] < sep_dist[p]:
+                    sep_dist[p] = dist[0][i]
                     parent[p] = active_node
 
             sep_dist_temp = sep_dist.copy()
@@ -78,7 +83,7 @@ class MultiScale():
                 radii[active_node] = sep_dist[active_node]
                 remaining_set.append(active_node)
 
-            sep_dist[active_node] = -1e10
+            # sep_dist[active_node] = -1e10
 
             n_active += 1
 
@@ -90,7 +95,7 @@ class MultiScale():
     def multiscale_solve(self, dX):
         self.dX = dX.copy()
         self.reorder()
-        self.generate_b()
+        self.generate_b_KD()
         self.generate_r()
         self.generate_LCRS()
         self.solve_b()
@@ -103,6 +108,26 @@ class MultiScale():
                 r = np.linalg.norm(self.X[p] - self.X[q]) / self.radii[q]
                 if r <= 1.0:
                     phi_b[i, j] = c2(r)
+
+        # fill via symmetry
+        for i in range(self.nb):
+            for j in range(self.nb):
+                coef = max([phi_b[i, j], phi_b[j, i]])
+                phi_b[i, j] = coef
+                phi_b[j, i] = coef
+
+        self.phi_b = phi_b
+
+    def generate_b_KD(self):
+        phi_b = np.zeros((self.nb, self.nb))
+        X_base = self.X[0:self.nb, :]
+        X_tree = KDTree(X_base, leaf_size=10)
+
+        for i, p in enumerate(self.base_set):
+            ind, dist = X_tree.query_radius(
+                [self.X[p, :]], self.radii[p], return_distance=True)
+            for index, rad in zip(ind[0], dist[0]):
+                phi_b[i, index] = c2(rad)
 
         # fill via symmetry
         for i in range(self.nb):
@@ -193,10 +218,78 @@ class MultiScale():
                     j += 1
             psi_v_rowptr[i + 1] = int(j)
 
-        self.psi_v_rowptr = psi_v_rowptr
-        self.col_index = col_index_temp
+        # self.psi_v_rowptr = psi_v_rowptr
+        # self.col_index = col_index_temp
 
         print('done')
+
+    def preprov_V_KD(self, V):
+        self.V = V.copy()
+        self.nV = V.shape[0]
+
+        X_tree = KDTree(self.V, leaf_size=10, metric='euclidean')
+
+        psi_v = [[0] for i in range(self.nV)]
+        psi_v_val_temp = [[0] for i in range(self.nV)]
+
+        for i in self.remaining_set:
+            ind, dist = X_tree.query_radius(
+                [self.X[i]], self.radii[i], return_distance=True)
+            for index, rad in zip(ind[0], dist[0]):
+                psi_v[index].append(int(i))
+                psi_v_val_temp[index].append(c2(rad / self.radii[i]))
+                if rad / self.radii[i] > 1:
+                    print("ERROR")
+
+        psi_v_rowptr = [0]
+        col_index_temp = []
+        psi_v_val = []
+
+        k = 0
+
+        for i in range(self.nV):
+            k += len(psi_v[i])
+            psi_v_rowptr.append(k)
+            psi_v_val.append(0)
+            for j in range(len(psi_v[i])):
+                col_index_temp.append(psi_v[i][j])
+                psi_v_val.append(psi_v_val_temp[i][j])
+
+        self.psi_v_rowptr = psi_v_rowptr
+        self.col_index = col_index_temp
+        self.psi_v_val = psi_v_val
+
+    def transfer_KD(self):
+        self.dV = np.zeros_like(self.V)
+        n_b_coef = 0
+        n_q_coef = 0
+        n_coef = 0
+        for i in range(self.nV):
+            for k in range(self.psi_v_rowptr[i], self.psi_v_rowptr[i + 1]):
+                if self.col_index[k] == 0:
+                    for q in self.base_set:
+                        r = np.linalg.norm(self.V[i, :] - self.X[q, :])
+                        e = r / self.radii[q]
+
+                        if e <= 1:
+                            coef = c2(e)
+                            self.dV[i, :] += coef * self.coef[q, :]
+                            n_b_coef += 1
+                            n_coef += 1
+                else:
+                    q = self.col_index[k]
+                    # r = np.linalg.norm(self.V[i, :] - self.X[q, :])
+                    # e = r / self.radii[q]
+
+                    # if e <= 1:
+                    #     coef = c2(e)
+                    self.dV[i, :] += self.psi_v_val[k] * self.coef[q, :]
+                    n_q_coef += 1
+                    n_coef += 1
+
+        self.n_b_coef = n_b_coef
+        self.n_q_coef = n_q_coef
+        self.n_coef = n_coef
 
     def transfer(self):
         self.dV = np.zeros_like(self.V)
@@ -222,9 +315,9 @@ class MultiScale():
 
                     if e <= 1:
                         coef = c2(e)
-                        self.dV[i, :] += coef * self.coef[q, :]
-                        n_q_coef += 1
-                        n_coef += 1
+                    self.dV[i, :] += coef * self.coef[q, :]
+                    n_q_coef += 1
+                    n_coef += 1
 
         self.n_b_coef = n_b_coef
         self.n_q_coef = n_q_coef
@@ -264,11 +357,18 @@ if __name__ == "__main__":
     rot_vector = np.array(
         [[np.cos(t), -np.sin(t), 0], [np.sin(t), np.cos(t), 0], [0, 0, 1]])
 
-    # dX = X @ rot_vector - X
+    dX = X @ rot_vector - X
 
     M = MultiScale(X, nb, r)
 
+    start = time.time()
+
     M.sequence_control_points(parent_weighting=True)
+
+    end = time.time()
+
+    print('Total time: ')
+    print(end - start)
 
     # M2 = MultiScale(X, nb, r)
     # M2.sequence_control_points(parent_weighting=False)
@@ -277,7 +377,7 @@ if __name__ == "__main__":
 
     M.multiscale_solve(dX)
 
-    M.preprov_V(V)
+    M.preprov_V_KD(V)
     M.transfer()
 
     plt.plot(X[:, 0], X[:, 1])

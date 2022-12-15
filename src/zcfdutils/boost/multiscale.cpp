@@ -13,8 +13,8 @@ namespace np = boost::python::numpy;
 
 using namespace boost::python;
 using namespace pygen;
-
 typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> Matrix_t;
+using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
 
 struct multiscale
 {
@@ -51,16 +51,17 @@ struct multiscale
 
         // create tree
 
-        using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
         my_kd_tree_t X_tree(3, std::cref(X), 20);
 
         std::vector<double> query_pt(3);
 
         std::vector<size_t> ret_indexes(ncp);
-        std::vector<double> out_dists_sqr(ncp);
+        std::vector<std::pair<Eigen::Index, double>> matches;
+        nanoflann::SearchParameters params;
+        size_t nMatches;
         nanoflann::KNNResultSet<double> resultsSet(ncp);
 
-        resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
+        // resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
 
         active_list.resize(ncp);
 
@@ -79,27 +80,34 @@ struct multiscale
 
         n_active = n_active + 1;
 
+        X_tree.index->buildIndex();
+
         while (n_active < ncp)
         {
             // query all points in tree against last added control point
 
-            resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
+            // resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
 
             for (int i = 0; i < 3; ++i)
             {
                 query_pt[i] = double(X(active_node, i));
             }
 
-            X_tree.index->findNeighbors(resultsSet, &query_pt[0]);
+            const double search_radius = sep_dist[active_node];
+
+            const size_t nMatches = X_tree.index->radiusSearch(&query_pt[0], search_radius, matches, params);
+
+            sep_dist[active_node] = -1e10;
 
             // ordering incorrect for some reason here, need to cross compare to scikit KD tree
             // ordering incorrect whether parental preference is used or not
-            for (int i = 0; i < ncp; ++i)
+            // #pragma omp parallel for
+            for (int i = 0; i < nMatches; ++i)
             {
-                inactive_node = ret_indexes[i];
-                if (out_dists_sqr[i] < sep_dist[inactive_node]) // needed this way to ensure negative eliminated values stay the away
+                int inactive_node = matches[i].first;
+                if (matches[i].second < sep_dist[inactive_node]) // needed this way to ensure negative eliminated values stay the away
                 {
-                    sep_dist[inactive_node] = out_dists_sqr[i];
+                    sep_dist[inactive_node] = matches[i].second;
                     parent[inactive_node] = active_node;
                 };
             };
@@ -151,11 +159,9 @@ struct multiscale
                 remaining_set.push_back(active_node);
             };
 
-            sep_dist[active_node] = -1e10;
-
             // free up unused memory
             ret_indexes.clear();
-            out_dists_sqr.clear();
+            matches.clear();
             query_pt.clear();
 
             children.clear();
@@ -197,7 +203,6 @@ struct multiscale
 
         // create tree
 
-        using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
         my_kd_tree_t X_tree(3, std::cref(X_base), 20);
 
         std::vector<double> query_pt(3);
@@ -252,8 +257,6 @@ struct multiscale
         Matrix_t X_remaining = X.block(nb, 0, ncp - nb, 3);
 
         // build tree
-
-        using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
         my_kd_tree_t X_tree(3, std::cref(X_remaining), 20);
 
         std::vector<double> query_pt(3);
@@ -296,7 +299,6 @@ struct multiscale
 
         Matrix_t X_remaining = X.block(nb, 0, ncp - nb, 3);
 
-        using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
         my_kd_tree_t X_tree(3, std::cref(X_remaining), 20);
         X_tree.index->buildIndex();
 
@@ -314,7 +316,7 @@ struct multiscale
                 query_pt[j] = X_remaining(i, j);
             }
 
-            const double search_radius = radii[remaining_set[i]];
+            const double search_radius = pow(radii[remaining_set[i]], 2);
 
             const size_t nMatches = X_tree.index->radiusSearch(&query_pt[0], search_radius, matches, params);
 
@@ -322,7 +324,8 @@ struct multiscale
             {
                 q = matches[j].first;
                 r = matches[j].second;
-                e = r / pow(radii[q], 2);
+                e = sqrt(r) / radii[i];
+                assert(e <= 1.0);
                 if (e <= 1.0)
                 {
                     triplet_list.push_back(Eigen::Triplet<double>(i, q, c2(sqrt(e))));
@@ -392,17 +395,21 @@ struct multiscale
 
     Matrix_t solve_b()
     {
+        std::cout << "solving base set" << std::endl;
         Matrix_t base_dX(nb, ncol);
 
         base_dX = dX.block(0, 0, nb, ncol);
+        // Matrix_t a_base = phi_b.partialPivLu().solve(base_dX);
         Matrix_t a_base = phi_b_llt.solve(base_dX);
-        std::cout << "Solved base set" << std::endl;
+        std::cout
+            << "Solved base set" << std::endl;
 
         return a_base;
     }
 
     Matrix_t solve_remaining(Matrix_t a_base)
     {
+        std::cout << "solving remaining" << std::endl;
         int ptr;
         double c;
 
@@ -430,39 +437,87 @@ struct multiscale
     {
         V = input_V;
         nv = V.rows();
-        double r, e;
+        double radSquared, e;
+        int targetNode, totalColEntries, numColEntries;
+
+        my_kd_tree_t X_tree(3, std::cref(V), 10);
+
+        std::vector<double> query_pt(3);
+
+        std::vector<std::vector<int>> psi_v(nv, std::vector<int>(1, 0));
+        std::vector<std::vector<int>> psi_v_val_temp(nv, std::vector<int>(1, 0));
+
+        size_t nMatches;
+        nanoflann::SearchParameters params;
+        std::vector<std::pair<Eigen::Index, double>> matches;
+
+        X_tree.index->buildIndex();
 
         int count = 0;
         int j = 0;
 
         psi_v_rowptr.push_back(0);
 
+        for (int remainingNode : remaining_set)
+        {
+            for (int i = 0; i < 3; ++i)
+            {
+                query_pt[i] = X(remainingNode, i);
+            }
+            const double search_radius = pow(radii[remainingNode], 2);
+
+            const size_t nMatches = X_tree.index->radiusSearch(&query_pt[0], search_radius, matches, params);
+
+            for (int i = 0; i < nMatches; ++i)
+            {
+                targetNode = matches[i].first;
+                radSquared = matches[i].second;
+
+                e = sqrt(radSquared) / radii[remainingNode];
+
+                assert(e <= 1.0);
+
+                psi_v[targetNode]
+                    .push_back(remainingNode);
+                psi_v_val_temp[targetNode].push_back(c2(e));
+            }
+        }
+
+        totalColEntries = 0;
+
         for (int i = 0; i < nv; ++i)
         {
-            psi_v_col_index.push_back(0);
-            ++j;
-            for (int k = nb; k < ncp; ++k)
+            numColEntries = psi_v[i].size();
+            totalColEntries += numColEntries;
+            psi_v_rowptr.push_back(totalColEntries);
+            psi_v_val.push_back(0);
+            for (int j = 0; j < numColEntries; ++j)
             {
-                r = (V.row(i) - X.row(k)).squaredNorm();
-
-                e = r / pow(radii[k], 2);
-                if (e <= 1.0)
-                {
-                    psi_v_col_index.push_back(k);
-                    ++j;
-                }
+                psi_v_col_index.push_back(psi_v[i][j]);
+                psi_v_val.push_back(psi_v_val_temp[i][j]);
             }
-            psi_v_rowptr.push_back(j);
         }
     }
 
     void multiscale_transfer()
     {
-        double r, e, c;
-        int q;
+        std::cout << "begining transfer" << std::endl;
+        double r, e, c, radSquared;
+        int q, targetNode;
 
         dV.resize(nv, ncol);
         dV.setZero();
+
+        Matrix_t X_base = X.block(0, 0, nb, 3);
+
+        my_kd_tree_t X_tree(3, std::cref(X_base), 20);
+
+        std::vector<double> query_pt(3);
+        size_t nMatches;
+        nanoflann::SearchParameters params;
+        std::vector<std::pair<Eigen::Index, double>> matches;
+
+        X_tree.index->buildIndex();
 
         for (int i = 0; i < nv; ++i)
         {
@@ -470,30 +525,33 @@ struct multiscale
             {
                 if (psi_v_col_index[k] == 0)
                 {
-                    for (int j = 0; j < nb; ++j)
+                    for (int j = 0; j < 3; ++j)
                     {
-                        r = (V.row(i) - X.row(j)).squaredNorm();
-                        e = r / pow(radii[j], 2);
-                        if (e <= 1.0)
-                        {
-                            c = c2(sqrt(e));
-                            dV.row(i) += c * a.row(j);
-                        }
+                        query_pt[j] = V(i, j);
+                    }
+
+                    const double search_radius = pow(r0, 2);
+                    const size_t nMatches = X_tree.index->radiusSearch(&query_pt[0], search_radius, matches, params);
+                    for (int j = 0; j < nMatches; ++j)
+                    {
+                        targetNode = matches[j].first;
+                        radSquared = matches[j].second;
+
+                        e = sqrt(radSquared) / r0;
+                        assert(e <= 1.0);
+
+                        c = c2(e);
+                        dV.row(i) += c * a.row(targetNode);
                     }
                 }
                 else
                 {
                     q = psi_v_col_index[k];
-                    r = (V.row(i) - X.row(q)).squaredNorm();
-                    e = r / pow(radii[q], 2);
-                    if (e <= 1.0)
-                    {
-                        c = c2(sqrt(e));
-                        dV.row(i) += c * a.row(q);
-                    }
+                    dV.row(i) += psi_v_val[k] * a.row(q);
                 }
             }
         }
+        std::cout << "Finished transfer" << std::endl;
     }
 
     double c2(double r)
@@ -568,6 +626,7 @@ struct multiscale
     Matrix_t a, dV, X, V, dX, phi_b, phi_r;
     Eigen::VectorXi active_list;
     std::vector<int> base_set, remaining_set, psi_v_rowptr, psi_v_col_index;
+    std::vector<double> psi_v_val;
     Eigen::SparseMatrix<double> LCSC;
     Eigen::VectorXd radii;
     bool reordered, built;

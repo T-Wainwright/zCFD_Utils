@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8.3)
 
 FIND_PACKAGE(PythonInterp 3.10 REQUIRED)
 
+project(mutlscale_cpp)
+
 if(PYTHONINTERP_FOUND)
   if(UNIX AND NOT APPLE)
     FIND_PACKAGE(Boost COMPONENTS python${PYTHON_VERSION_SUFFIX})
@@ -38,3 +40,8 @@ INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
 LINK_LIBRARIES(${Boost_LIBRARIES} ${PYTHON_LIBRARIES}) # Deprecated but so convenient!
 
 PYTHON_ADD_MODULE(multiscale multiscale.cpp)
+
+# find_package(OpenMP)
+# if(OpenMP_CXX_FOUND)
+# target_link_libraries(multiscale PUBLIC OpenMP::OpenMP_CXX)
+# endif()

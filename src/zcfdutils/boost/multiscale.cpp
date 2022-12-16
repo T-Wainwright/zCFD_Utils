@@ -167,16 +167,15 @@ struct multiscale
             children.clear();
             sep_dist_temp.clear();
 
-            progress_bar(n_active);
+            progress_bar(double(n_active) / double(ncp));
 
             n_active++;
         }
     }
 
-    void progress_bar(int n_active)
+    void progress_bar(double progress)
     {
         int barWidth = 70;
-        double progress = double(n_active) / double(ncp);
         std::cout << "[";
         int pos = barWidth * progress;
         for (int i = 0; i < barWidth; ++i)
@@ -194,6 +193,7 @@ struct multiscale
 
     void build_phi_b()
     {
+        std::cout << "building phi_b" << std::endl;
         phi_b.resize(nb, nb);
         double r, e, coef;
 
@@ -232,6 +232,7 @@ struct multiscale
                     phi_b(i, query_node) = c2(sqrt(e));
                 }
             };
+            progress_bar(double(i) / double(nb));
         };
 
         // fill via symmetry
@@ -243,13 +244,16 @@ struct multiscale
                 phi_b(i, j) = coef;
                 phi_b(j, i) = coef;
             };
+            progress_bar(double(i) / double(nb));
         };
 
         phi_b_llt.compute(phi_b);
+        std::cout << "built phi_b" << std::endl;
     }
 
     void build_phi_r()
     {
+        std::cout << "building phi_r" << std::endl;
         phi_r.resize(ncp - nb, nb);
         double r, e;
         int query_node;
@@ -288,11 +292,14 @@ struct multiscale
                     phi_r(query_node, i) = c2(sqrt(e));
                 }
             }
+            progress_bar(double(i) / double(nb));
         }
+        std::cout << "built phi_r" << std::endl;
     }
 
     void build_LCSC()
     {
+        std::cout << "building LCSC" << std::endl;
         std::vector<Eigen::Triplet<double>> triplet_list;
         int p, q;
         double r, e;
@@ -331,14 +338,17 @@ struct multiscale
                     triplet_list.push_back(Eigen::Triplet<double>(i, q, c2(sqrt(e))));
                 }
             }
+            progress_bar(double(i) / double(remaining_set.size()));
         }
         LCSC.resize(ncp - nb, ncp - nb);
         LCSC.setFromTriplets(triplet_list.begin(), triplet_list.end());
         LCSC.makeCompressed();
+        std::cout << "built LCSC" << std::endl;
     }
 
     void reorder()
     {
+        std::cout << "reordering" << std::endl;
         Matrix_t X_new(ncp, 3);
         Matrix_t dX_new(ncp, ncol);
         Eigen::VectorXd radii_new(ncp);
@@ -370,6 +380,7 @@ struct multiscale
         std::iota(remaining_set.begin(), remaining_set.end(), nb);
 
         reordered = true;
+        std::cout << "reordered" << std::endl;
     }
 
     void multiscale_solve(Matrix_t dX_input)

@@ -197,7 +197,7 @@ struct multiscale
         phi_b.resize(nb, nb);
         double r, e, coef;
 
-        int query_node;
+        int query_node, q;
 
         Matrix_t X_base = X.block(0, 0, nb, 3);
 
@@ -207,30 +207,30 @@ struct multiscale
 
         std::vector<double> query_pt(3);
 
-        std::vector<size_t> ret_indexes(nb);
-        std::vector<double> out_dists_sqr(nb);
-        nanoflann::KNNResultSet<double> resultsSet(nb);
+        size_t nMatches;
+        nanoflann::SearchParameters params;
+        std::vector<std::pair<Eigen::Index, double>> matches;
 
-        // cycle through initial set
+        X_tree.index->buildIndex();
+
         for (int i = 0; i < nb; ++i)
         {
-            resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
-
             for (int j = 0; j < 3; ++j)
             {
                 query_pt[j] = double(X_base(i, j));
             }
 
-            X_tree.index->findNeighbors(resultsSet, &query_pt[0]);
+            const double search_radius = pow(radii[base_set[i]], 2);
 
-            for (int j = 0; j < nb; ++j)
+            const size_t nMatches = X_tree.index->radiusSearch(&query_pt[0], search_radius, matches, params);
+
+            for (int j = 0; j < nMatches; ++j)
             {
-                query_node = ret_indexes[j];
-                e = out_dists_sqr[j] / pow(radii[query_node], 2);
-                if (e <= 1.0)
-                {
-                    phi_b(i, query_node) = c2(sqrt(e));
-                }
+                q = matches[j].first;
+                r = matches[j].second;
+                e = sqrt(r) / r0;
+                assert(e <= 1.0);
+                phi_b(i, q) = c2(e);
             };
             progress_bar(double(i) / double(nb));
         };
@@ -256,7 +256,7 @@ struct multiscale
         std::cout << "building phi_r" << std::endl;
         phi_r.resize(ncp - nb, nb);
         double r, e;
-        int query_node;
+        int query_node, q;
 
         Matrix_t X_remaining = X.block(nb, 0, ncp - nb, 3);
 
@@ -265,14 +265,14 @@ struct multiscale
 
         std::vector<double> query_pt(3);
 
-        std::vector<size_t> ret_indexes(ncp - nb);
-        std::vector<double> out_dists_sqr(ncp - nb);
-        nanoflann::KNNResultSet<double> resultsSet(ncp - nb);
+        size_t nMatches;
+        nanoflann::SearchParameters params;
+        std::vector<std::pair<Eigen::Index, double>> matches;
+
+        X_tree.index->buildIndex();
 
         for (int i = 0; i < nb; ++i)
         {
-            resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
-
             for (int j = 0; j < 3; ++j)
             {
                 // set query point to be i'th base node
@@ -280,17 +280,17 @@ struct multiscale
             }
 
             // query remaining set vs base node
-            X_tree.index->findNeighbors(resultsSet, &query_pt[0]);
+            const double search_radius = pow(radii[base_set[i]], 2);
 
-            for (int j = 0; j < ncp - nb; ++j)
+            const size_t nMatches = X_tree.index->radiusSearch(&query_pt[0], search_radius, matches, params);
+
+            for (int j = 0; j < nMatches; ++j)
             {
-                query_node = ret_indexes[j];
-                r = out_dists_sqr[j];
-                e = r / pow(radii[i], 2);
-                if (e <= 1.0)
-                {
-                    phi_r(query_node, i) = c2(sqrt(e));
-                }
+                q = matches[j].first;
+                r = matches[j].second;
+                e = sqrt(r) / radii[base_set[i]];
+                assert(e <= 1.0);
+                phi_r(q, i) = c2(e);
             }
             progress_bar(double(i) / double(nb));
         }
@@ -333,10 +333,8 @@ struct multiscale
                 r = matches[j].second;
                 e = sqrt(r) / radii[i];
                 assert(e <= 1.0);
-                if (e <= 1.0)
-                {
-                    triplet_list.push_back(Eigen::Triplet<double>(i, q, c2(sqrt(e))));
-                }
+
+                triplet_list.push_back(Eigen::Triplet<double>(i, q, c2(e)));
             }
             progress_bar(double(i) / double(remaining_set.size()));
         }
@@ -383,6 +381,19 @@ struct multiscale
         std::cout << "reordered" << std::endl;
     }
 
+    void reorder_dX()
+    {
+        Matrix_t dX_new(ncp, ncol);
+        int active_node;
+        for (int i = 0; i < active_list.size(); ++i)
+        {
+            active_node = active_list(i);
+            dX_new.row(i) = dX.row(active_node);
+        }
+        dX.setZero();
+        dX = dX_new;
+    }
+
     void multiscale_solve(Matrix_t dX_input)
     {
         dX = dX_input;
@@ -392,6 +403,11 @@ struct multiscale
         {
             reorder();
         }
+        else
+        {
+            reorder_dX();
+        }
+
         if (not built)
         {
             build_phi_b();
@@ -410,6 +426,9 @@ struct multiscale
         Matrix_t base_dX(nb, ncol);
 
         base_dX = dX.block(0, 0, nb, ncol);
+
+        std::cout << base_dX << std::endl;
+
         // Matrix_t a_base = phi_b.partialPivLu().solve(base_dX);
         Matrix_t a_base = phi_b_llt.solve(base_dX);
         std::cout
@@ -561,6 +580,7 @@ struct multiscale
                     dV.row(i) += psi_v_val[k] * a.row(q);
                 }
             }
+            progress_bar(double(i) / double(nv));
         }
         std::cout << "Finished transfer" << std::endl;
     }

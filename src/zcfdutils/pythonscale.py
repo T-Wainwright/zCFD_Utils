@@ -96,8 +96,8 @@ class MultiScale():
         self.dX = dX.copy()
         self.reorder()
         self.generate_b_KD()
-        self.generate_r()
-        self.generate_LCRS()
+        self.generate_r_KD()
+        self.generate_LCRS_KD()
         self.solve_b()
         self.solve_remaining()
 
@@ -125,9 +125,9 @@ class MultiScale():
 
         for i, p in enumerate(self.base_set):
             ind, dist = X_tree.query_radius(
-                [self.X[p, :]], self.radii[p], return_distance=True)
+                [self.X[p, :]], self.r, return_distance=True)
             for index, rad in zip(ind[0], dist[0]):
-                phi_b[i, index] = c2(rad)
+                phi_b[i, index] = c2(rad / self.r)
 
         # fill via symmetry
         for i in range(self.nb):
@@ -165,6 +165,20 @@ class MultiScale():
 
         self.phi_r = phi_r
 
+    def generate_r_KD(self):
+        phi_r = np.zeros((self.np - self.nb, self.nb))
+        X_remaining = self.X[self.nb:, :]
+        X_tree = KDTree(X_remaining, leaf_size=10)
+
+        for i, p in enumerate(self.base_set):
+            ind, dist = X_tree.query_radius(
+                [self.X[p, :]], self.radii[p], return_distance=True)
+
+            for index, rad in zip(ind[0], dist[0]):
+                phi_r[index, i] = c2(rad / self.radii[i])
+
+        self.phi_r = phi_r
+
     def generate_LCRS(self):
         LCRS = np.zeros((self.np - self.nb, self.np - self.nb))
         for i, p in enumerate(self.remaining_set):
@@ -173,6 +187,19 @@ class MultiScale():
                 r = np.linalg.norm(self.X[p] - self.X[q]) / self.radii[q]
                 if r <= 1.0:
                     LCRS[i, j] = c2(r)
+
+        self.LCRS = sparse.csc_matrix(LCRS)
+
+    def generate_LCRS_KD(self):
+        LCRS = np.zeros((self.np - self.nb, self.np - self.nb))
+        X_remaining = self.X[self.nb:, :]
+        X_tree = KDTree(X_remaining, leaf_size=10)
+        for i, p in enumerate(self.remaining_set):
+            ind, dist = X_tree.query_radius(
+                [self.X[p, :]], self.radii[p], return_distance=True)
+
+            for index, rad in zip(ind[0], dist[0]):
+                LCRS[i, index] = c2(rad / self.radii[p])
 
         self.LCRS = sparse.csc_matrix(LCRS)
 

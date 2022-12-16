@@ -301,7 +301,7 @@ struct multiscale
     {
         std::cout << "building LCSC" << std::endl;
         std::vector<Eigen::Triplet<double>> triplet_list;
-        int p, q;
+        int p, q, remainingNode;
         double r, e;
 
         Matrix_t X_remaining = X.block(nb, 0, ncp - nb, 3);
@@ -323,7 +323,9 @@ struct multiscale
                 query_pt[j] = X_remaining(i, j);
             }
 
-            const double search_radius = pow(radii[remaining_set[i]], 2);
+            remainingNode = remaining_set[i];
+
+            const double search_radius = pow(radii[remainingNode], 2);
 
             const size_t nMatches = X_tree.index->radiusSearch(&query_pt[0], search_radius, matches, params);
 
@@ -331,7 +333,7 @@ struct multiscale
             {
                 q = matches[j].first;
                 r = matches[j].second;
-                e = sqrt(r) / radii[i];
+                e = sqrt(r) / radii[remainingNode];
                 assert(e <= 1.0);
 
                 triplet_list.push_back(Eigen::Triplet<double>(i, q, c2(e)));
@@ -426,8 +428,6 @@ struct multiscale
         Matrix_t base_dX(nb, ncol);
 
         base_dX = dX.block(0, 0, nb, ncol);
-
-        std::cout << base_dX << std::endl;
 
         // Matrix_t a_base = phi_b.partialPivLu().solve(base_dX);
         Matrix_t a_base = phi_b_llt.solve(base_dX);

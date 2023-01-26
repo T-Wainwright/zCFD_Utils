@@ -27,6 +27,7 @@ struct multiscale
         ndim = X.cols();
 
         reordered = false;
+        built = false;
 
         // run  checks
         if (nb > ncp)

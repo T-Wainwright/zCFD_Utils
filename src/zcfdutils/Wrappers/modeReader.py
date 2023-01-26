@@ -42,6 +42,12 @@ class cba_modal():
 
         self.grid = np.loadtxt(fname, skiprows=row_ctr, max_rows=self.n_pts)
 
+    def calculate_norms(self):
+        self.norms = np.zeros((self.num_modes, self.n_pts))
+        for i in range(self.num_modes):
+            for j in range(self.n_pts):
+                self.norms[i, j] = np.linalg.norm(self.eigenvectors[i, j, :])
+
     def write_grid_tec(self, fname):
         f = open(fname, "w")
         for i in range(self.n_pts):

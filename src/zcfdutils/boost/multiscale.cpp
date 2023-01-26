@@ -24,6 +24,7 @@ struct multiscale
         nb = num_base;
         ncp = X.rows();
         r0 = base_radii;
+        ndim = X.cols();
 
         reordered = false;
 
@@ -51,9 +52,9 @@ struct multiscale
 
         // create tree
 
-        my_kd_tree_t X_tree(3, std::cref(X), 20);
+        my_kd_tree_t X_tree(ndim, std::cref(X), 20);
 
-        std::vector<double> query_pt(3);
+        std::vector<double> query_pt(ndim);
 
         std::vector<size_t> ret_indexes(ncp);
         std::vector<std::pair<Eigen::Index, double>> matches;
@@ -88,7 +89,7 @@ struct multiscale
 
             // resultsSet.init(&ret_indexes[0], &out_dists_sqr[0]);
 
-            for (int i = 0; i < 3; ++i)
+            for (int i = 0; i < ndim; ++i)
             {
                 query_pt[i] = double(X(active_node, i));
             }
@@ -199,13 +200,13 @@ struct multiscale
 
         int query_node, q;
 
-        Matrix_t X_base = X.block(0, 0, nb, 3);
+        Matrix_t X_base = X.block(0, 0, nb, ndim);
 
         // create tree
 
-        my_kd_tree_t X_tree(3, std::cref(X_base), 20);
+        my_kd_tree_t X_tree(ndim, std::cref(X_base), 20);
 
-        std::vector<double> query_pt(3);
+        std::vector<double> query_pt(ndim);
 
         size_t nMatches;
         nanoflann::SearchParameters params;
@@ -215,7 +216,7 @@ struct multiscale
 
         for (int i = 0; i < nb; ++i)
         {
-            for (int j = 0; j < 3; ++j)
+            for (int j = 0; j < ndim; ++j)
             {
                 query_pt[j] = double(X_base(i, j));
             }
@@ -258,12 +259,12 @@ struct multiscale
         double r, e;
         int query_node, q;
 
-        Matrix_t X_remaining = X.block(nb, 0, ncp - nb, 3);
+        Matrix_t X_remaining = X.block(nb, 0, ncp - nb, ndim);
 
         // build tree
-        my_kd_tree_t X_tree(3, std::cref(X_remaining), 20);
+        my_kd_tree_t X_tree(ndim, std::cref(X_remaining), 20);
 
-        std::vector<double> query_pt(3);
+        std::vector<double> query_pt(ndim);
 
         size_t nMatches;
         nanoflann::SearchParameters params;
@@ -273,7 +274,7 @@ struct multiscale
 
         for (int i = 0; i < nb; ++i)
         {
-            for (int j = 0; j < 3; ++j)
+            for (int j = 0; j < ndim; ++j)
             {
                 // set query point to be i'th base node
                 query_pt[j] = double(X(i, j));
@@ -304,12 +305,12 @@ struct multiscale
         int p, q, remainingNode;
         double r, e;
 
-        Matrix_t X_remaining = X.block(nb, 0, ncp - nb, 3);
+        Matrix_t X_remaining = X.block(nb, 0, ncp - nb, ndim);
 
-        my_kd_tree_t X_tree(3, std::cref(X_remaining), 20);
+        my_kd_tree_t X_tree(ndim, std::cref(X_remaining), 20);
         X_tree.index->buildIndex();
 
-        std::vector<double> query_pt(3);
+        std::vector<double> query_pt(ndim);
         size_t nMatches;
         nanoflann::SearchParameters params;
         std::vector<std::pair<Eigen::Index, double>> matches;
@@ -318,7 +319,7 @@ struct multiscale
 
         for (int i = 0; i < remaining_set.size(); ++i)
         {
-            for (int j = 0; j < 3; ++j)
+            for (int j = 0; j < ndim; ++j)
             {
                 query_pt[j] = X_remaining(i, j);
             }
@@ -349,7 +350,7 @@ struct multiscale
     void reorder()
     {
         std::cout << "reordering" << std::endl;
-        Matrix_t X_new(ncp, 3);
+        Matrix_t X_new(ncp, ndim);
         Matrix_t dX_new(ncp, ncol);
         Eigen::VectorXd radii_new(ncp);
         int active_node;
@@ -470,9 +471,9 @@ struct multiscale
         double radSquared, e;
         int targetNode, totalColEntries, numColEntries;
 
-        my_kd_tree_t X_tree(3, std::cref(V), 10);
+        my_kd_tree_t X_tree(ndim, std::cref(V), 10);
 
-        std::vector<double> query_pt(3);
+        std::vector<double> query_pt(ndim);
 
         std::vector<std::vector<int>> psi_v(nv, std::vector<int>(1, 0));
         std::vector<std::vector<int>> psi_v_val_temp(nv, std::vector<int>(1, 0));
@@ -490,7 +491,7 @@ struct multiscale
 
         for (int remainingNode : remaining_set)
         {
-            for (int i = 0; i < 3; ++i)
+            for (int i = 0; i < ndim; ++i)
             {
                 query_pt[i] = X(remainingNode, i);
             }
@@ -538,11 +539,11 @@ struct multiscale
         dV.resize(nv, ncol);
         dV.setZero();
 
-        Matrix_t X_base = X.block(0, 0, nb, 3);
+        Matrix_t X_base = X.block(0, 0, nb, ndim);
 
-        my_kd_tree_t X_tree(3, std::cref(X_base), 20);
+        my_kd_tree_t X_tree(ndim, std::cref(X_base), 20);
 
-        std::vector<double> query_pt(3);
+        std::vector<double> query_pt(ndim);
         size_t nMatches;
         nanoflann::SearchParameters params;
         std::vector<std::pair<Eigen::Index, double>> matches;
@@ -555,7 +556,7 @@ struct multiscale
             {
                 if (psi_v_col_index[k] == 0)
                 {
-                    for (int j = 0; j < 3; ++j)
+                    for (int j = 0; j < ndim; ++j)
                     {
                         query_pt[j] = V(i, j);
                     }
@@ -652,7 +653,7 @@ struct multiscale
     Eigen::VectorXi tree_ind;
     Eigen::LLT<Matrix_t> phi_b_llt;
 
-    int nb, ncp, nv, ncol;
+    int nb, ncp, nv, ncol, ndim;
     double r0;
     Matrix_t a, dV, X, V, dX, phi_b, phi_r;
     Eigen::VectorXi active_list;

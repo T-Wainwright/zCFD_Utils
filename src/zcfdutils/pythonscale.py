@@ -101,6 +101,20 @@ class MultiScale():
         self.solve_b()
         self.solve_remaining()
 
+    def multiscale_solve_with_poly(self, dX):
+        self.dX = dX.copy()
+        self.reorder()
+        self.generate_P()
+
+    def generate_P(self):
+        self.P = np.zeros((self.np, 4))
+        self.P[0, :] = 1.0
+        for i in range(3):
+            self.P[i, :] = self.X[:, i]
+
+        print('done')
+        
+
     def generate_b(self):
         phi_b = np.zeros((self.nb, self.nb))
         for i, p in enumerate(self.base_set):
@@ -371,11 +385,11 @@ if __name__ == "__main__":
     start = time.time()
 
     X = np.loadtxt(
-        '/home/tom/Documents/University/Coding/zCFD_Utils/data/surface.xyz', skiprows=1)
+        '/Users/tom.wainwright/Documents/code/zCFD_Utils/data/surface.xyz', skiprows=1)
     V = np.loadtxt(
-        '/home/tom/Documents/University/Coding/zCFD_Utils/data/volume.xyz', skiprows=1)
+        '/Users/tom.wainwright/Documents/code/zCFD_Utils/data/volume.xyz', skiprows=1)
     dX = np.loadtxt(
-        '/home/tom/Documents/University/Coding/zCFD_Utils/data/displacements.xyz', skiprows=1)
+        '/Users/tom.wainwright/Documents/code/zCFD_Utils/data/displacements.xyz', skiprows=1)
 
     nb = 0.1
     r = 4
@@ -402,17 +416,19 @@ if __name__ == "__main__":
 
     # print("done")
 
-    M.multiscale_solve(dX)
+    M.multiscale_solve_with_poly(dX)
 
-    M.preprov_V_KD(V)
-    M.transfer()
+    # M.multiscale_solve(dX)
 
-    plt.plot(X[:, 0], X[:, 1])
-    plt.plot(X[:, 0] + dX[:, 0], X[:, 1] + dX[:, 1])
+    # M.preprov_V_KD(V)
+    # M.transfer()
 
-    plt.plot(V[:, 0], V[:, 1])
-    plt.plot(V[:, 0] + M.dV[:, 0], V[:, 1] + M.dV[:, 1])
+    # plt.plot(X[:, 0], X[:, 1])
+    # plt.plot(X[:, 0] + dX[:, 0], X[:, 1] + dX[:, 1])
 
-    # plt.plot(OD[:, 0], OD[:, 1])
+    # plt.plot(V[:, 0], V[:, 1])
+    # plt.plot(V[:, 0] + M.dV[:, 0], V[:, 1] + M.dV[:, 1])
 
-    plt.show()
+    # # plt.plot(OD[:, 0], OD[:, 1])
+
+    # plt.show()

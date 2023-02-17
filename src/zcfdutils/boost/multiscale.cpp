@@ -195,6 +195,13 @@ struct multiscale
         std::cout.flush();
     }
 
+    void build_P(){
+        std::cout << "building P" << std::endl;
+        P.resize(4, np);
+        P.block(0, 0, np, 1) = Eigen::MatrixXd::Constant(np, 1, 1.0);
+        P.block(0, 1, np, 3) = X;
+    }
+
     void build_phi_b()
     {
         std::cout << "building phi_b" << std::endl;
@@ -400,7 +407,7 @@ struct multiscale
         dX = dX_new;
     }
 
-    void multiscale_solve(Matrix_t dX_input)
+    void multiscale_solve(Matrix_t dX_input, bool poly=false)
     {
         dX = dX_input;
         ncol = dX.cols();
@@ -412,6 +419,12 @@ struct multiscale
         else
         {
             reorder_dX();
+        }
+
+        if (poly){
+            incLinearPolynomial = true;
+            std::cout << "including Linear polynomial in RBF system"
+            generate_P();
         }
 
         if (not built)
@@ -658,7 +671,7 @@ struct multiscale
 
     int nb, ncp, nv, ncol, ndim;
     double r0;
-    Matrix_t a, dV, X, V, dX, phi_b, phi_r;
+    Matrix_t a, dV, X, V, dX, phi_b, phi_r, P;
     Eigen::VectorXi active_list;
     std::vector<int> base_set, remaining_set, psi_v_rowptr, psi_v_col_index;
     std::vector<double> psi_v_val;

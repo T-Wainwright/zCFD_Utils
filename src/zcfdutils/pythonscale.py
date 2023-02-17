@@ -299,6 +299,10 @@ class MultiScale():
 
         print('done')
 
+    def preprov_V_poly(self):
+        self.A_poly = np.ones((self.nV, 4))
+        self.A_poly[:, 1:4] = self.V
+
     def preprov_V_KD(self, V):
         self.V = V.copy()
         self.nV = V.shape[0]
@@ -399,6 +403,10 @@ class MultiScale():
         self.n_q_coef = n_q_coef
         self.n_coef = n_coef
 
+    def transfer_poly(self):
+        self.dV_poly = np.zeros_like(self.V)
+        self.dV_poly = self.A_poly @ self.a_poly
+
     def reorder(self):
         X_new = self.X[self.active_list, :]
         dX_new = self.dX[self.active_list, :]
@@ -411,6 +419,7 @@ class MultiScale():
         self.remaining_set = [i for i in range(self.nb, self.np)]
 
 
+
 def c2(r):
     psi = ((1 - r)**4) * (4 * r + 1)
     return psi
@@ -420,11 +429,11 @@ if __name__ == "__main__":
     start = time.time()
 
     X = np.loadtxt(
-        '/home/tom/Documents/University/Coding/zCFD_Utils/data/surface.xyz', skiprows=1)
+        '/Users/tom.wainwright/Documents/code/zCFD_Utils/data/surface.xyz', skiprows=1)
     V = np.loadtxt(
-        '/home/tom/Documents/University/Coding/zCFD_Utils/data/volume.xyz', skiprows=1)
+        '/Users/tom.wainwright/Documents/code/zCFD_Utils/data/volume.xyz', skiprows=1)
     dX = np.loadtxt(
-        '/home/tom/Documents/University/Coding/zCFD_Utils/data/displacements.xyz', skiprows=1)
+        '/Users/tom.wainwright/Documents/code/zCFD_Utils/data/displacements.xyz', skiprows=1)
 
     nb = 0.1
     r = 4
@@ -451,18 +460,24 @@ if __name__ == "__main__":
 
     # print("done")
 
-    M.multiscale_solve_with_poly(dX)
+    # M.multiscale_solve_with_poly(dX)
 
-    # M.multiscale_solve(dX)
+    M.multiscale_solve(dX)
 
     M.preprov_V_KD(V)
+    # M.preprov_V_poly()
     M.transfer()
+    # M.transfer_poly()
+
 
     plt.plot(X[:, 0], X[:, 1])
     plt.plot(X[:, 0] + dX[:, 0], X[:, 1] + dX[:, 1])
 
     plt.plot(V[:, 0], V[:, 1])
     plt.plot(V[:, 0] + M.dV[:, 0], V[:, 1] + M.dV[:, 1])
+
+    # plt.plot(V[:, 0], V[:, 1])
+    # plt.plot(V[:, 0] + M.dV_poly[:, 0], V[:, 1] + M.dV_poly[:, 1])
 
     # plt.plot(OD[:, 0], OD[:, 1])
 

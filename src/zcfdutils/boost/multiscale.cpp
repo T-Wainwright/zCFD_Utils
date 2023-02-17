@@ -1,5 +1,5 @@
-#include <boost/python.hpp>
-#include <boost/python/numpy.hpp>
+// #include <boost/python.hpp>
+// #include <boost/python/numpy.hpp>
 #include <iostream>
 #include <vector>
 #include <numeric>
@@ -7,6 +7,8 @@
 #include <eigen3/Eigen/Sparse>
 #include "converters.h"
 #include "nanoflann.hpp"
+// #include <pybind11/pybind11.h>
+// #include <pybind11/stl.h>
 
 namespace p = boost::python;
 namespace np = boost::python::numpy;
@@ -18,16 +20,18 @@ using my_kd_tree_t = nanoflann::KDTreeEigenMatrixAdaptor<Matrix_t>;
 
 struct multiscale
 {
-    multiscale(Matrix_t input_X, int num_base, double base_radii)
+    multiscale(Matrix_t input_X, double base_fraction, double base_radii, bool output = false)
     {
         X = input_X;
-        nb = num_base;
         ncp = X.rows();
+        nb = int(ncp * base_fraction);
         r0 = base_radii;
         ndim = X.cols();
 
         reordered = false;
         built = false;
+        output_progress = output;
+        incLinearPolynomial = true;
 
         // run  checks
         if (nb > ncp)
@@ -177,20 +181,37 @@ struct multiscale
 
     void progress_bar(double progress)
     {
-        int barWidth = 70;
-        std::cout << "[";
-        int pos = barWidth * progress;
-        for (int i = 0; i < barWidth; ++i)
+        if (output_progress)
         {
-            if (i < pos)
-                std::cout << "=";
-            else if (i == pos)
-                std::cout << ">";
-            else
-                std::cout << " ";
+            int barWidth = 70;
+            std::cout << "[";
+            int pos = barWidth * progress;
+            for (int i = 0; i < barWidth; ++i)
+            {
+                if (i < pos)
+                    std::cout << "=";
+                else if (i == pos)
+                    std::cout << ">";
+                else
+                    std::cout << " ";
+            }
+            std::cout << "] " << int(progress * 100.0) << " %\r";
+            std::cout.flush();
         }
-        std::cout << "] " << int(progress * 100.0) << " %\r";
-        std::cout.flush();
+    }
+
+    void build_P()
+    {
+        std::cout << "building P" << std::endl;
+        P.resize(1 + ndim, ncp);
+        for (int i = 0; i < ncp; ++i)
+        {
+            P(0, i) = 1.0;
+            for (int j = 1; j < 1 + ndim; ++j)
+            {
+                P(j, i) = X(i, j - 1);
+            }
+        }
     }
 
     void build_phi_b()
@@ -352,7 +373,7 @@ struct multiscale
     {
         std::cout << "reordering" << std::endl;
         Matrix_t X_new(ncp, ndim);
-        Matrix_t dX_new(ncp, ncol);
+        Matrix_t dX_new(ncp, ndim);
         Eigen::VectorXd radii_new(ncp);
         int active_node;
 
@@ -387,7 +408,7 @@ struct multiscale
 
     void reorder_dX()
     {
-        Matrix_t dX_new(ncp, ncol);
+        Matrix_t dX_new(ncp, ndim);
         int active_node;
         for (int i = 0; i < active_list.size(); ++i)
         {
@@ -398,10 +419,9 @@ struct multiscale
         dX = dX_new;
     }
 
-    void multiscale_solve(Matrix_t dX_input)
+    void multiscale_solve(Matrix_t dX_input, bool poly)
     {
         dX = dX_input;
-        ncol = dX.cols();
 
         if (not reordered)
         {
@@ -412,6 +432,17 @@ struct multiscale
             reorder_dX();
         }
 
+        if (poly)
+        {
+            incLinearPolynomial = true;
+            std::cout << "including Linear polynomial in RBF system" << std::endl;
+            build_P();
+        }
+        else
+        {
+            incLinearPolynomial = false;
+        }
+
         if (not built)
         {
             build_phi_b();
@@ -420,19 +451,40 @@ struct multiscale
             built = true;
         }
 
+        if (incLinearPolynomial)
+        {
+            solve_polynomial_coefficients();
+        }
+
         Matrix_t a_base = solve_b();
         a = solve_remaining(a_base);
+    }
+
+    void solve_polynomial_coefficients()
+    {
+        std::cout << "solving polynomial coefficients" << std::endl;
+        polynomial_coefficients = P.completeOrthogonalDecomposition().pseudoInverse().transpose() * dX;
+        std::cout << "solved polynomial coefficients" << std::endl;
     }
 
     Matrix_t solve_b()
     {
         std::cout << "solving base set" << std::endl;
-        Matrix_t base_dX(nb, ncol);
+        Matrix_t base_rhs(nb, ndim);
 
-        base_dX = dX.block(0, 0, nb, ncol);
+        if (incLinearPolynomial)
+        {
+            Matrix_t PT = P * P.transpose();
+            rhs = dX - P.transpose() * PT.completeOrthogonalDecomposition().pseudoInverse() * P * dX;
+            base_rhs = rhs.block(0, 0, nb, ndim);
+        }
+        else
+        {
+            base_rhs = dX.block(0, 0, nb, ndim);
+        }
 
         // Matrix_t a_base = phi_b.partialPivLu().solve(base_dX);
-        Matrix_t a_base = phi_b_llt.solve(base_dX);
+        Matrix_t a_base = phi_b_llt.solve(base_rhs);
         std::cout
             << "Solved base set" << std::endl;
 
@@ -445,11 +497,21 @@ struct multiscale
         int ptr;
         double c;
 
-        Matrix_t dX_res = dX;
-        dX_res.block(nb, 0, ncp - nb, ncol) = dX_res.block(nb, 0, ncp - nb, ncol) - phi_r * a_base;
+        Matrix_t dX_res;
 
-        Matrix_t coef(ncp, ncol);
-        coef.block(0, 0, nb, ncol) = a_base;
+        if (incLinearPolynomial)
+        {
+            dX_res = rhs;
+        }
+        else
+        {
+            dX_res = dX;
+        }
+
+        dX_res.block(nb, 0, ncp - nb, ndim) = dX_res.block(nb, 0, ncp - nb, ndim) - phi_r * a_base;
+
+        Matrix_t coef(ncp, ndim);
+        coef.block(0, 0, nb, ndim) = a_base;
 
         for (int i = 0; i < remaining_set.size(); ++i)
         {
@@ -529,6 +591,15 @@ struct multiscale
                 psi_v_val.push_back(psi_v_val_temp[i][j]);
             }
         }
+
+        if (incLinearPolynomial)
+        {
+            std::cout << "constructing psi_v_poly" << std::endl;
+            psi_v_poly.resize(nv, 1 + ndim);
+            psi_v_poly.block(0, 0, nv, 1) = Eigen::MatrixXd::Constant(nv, 1, 1.0);
+            psi_v_poly.block(0, 1, nv, ndim) = V;
+            std::cout << "constructed psi_v_poly" << std::endl;
+        }
     }
 
     void multiscale_transfer()
@@ -537,8 +608,10 @@ struct multiscale
         double r, e, c, radSquared;
         int q, targetNode;
 
-        dV.resize(nv, ncol);
-        dV.setZero();
+        dV_rbf.resize(nv, ndim);
+        dV_rbf.setZero();
+
+        dV.resize(nv, ndim);
 
         Matrix_t X_base = X.block(0, 0, nb, ndim);
 
@@ -573,16 +646,33 @@ struct multiscale
                         assert(e <= 1.0);
 
                         c = c2(e);
-                        dV.row(i) += c * a.row(targetNode);
+                        dV_rbf.row(i) += c * a.row(targetNode);
                     }
                 }
                 else
                 {
                     q = psi_v_col_index[k];
-                    dV.row(i) += psi_v_val[k] * a.row(q);
+                    dV_rbf.row(i) += psi_v_val[k] * a.row(q);
                 }
             }
             progress_bar(double(i) / double(nv));
+        }
+
+        if (incLinearPolynomial)
+        {
+            std::cout << "1" << std::endl;
+            dV_poly.resize(nv, ndim);
+            std::cout << "2" << std::endl;
+
+            dV_poly = psi_v_poly * polynomial_coefficients;
+            std::cout << "3" << std::endl;
+
+            dV = dV_poly;
+            std::cout << "4" << std::endl;
+        }
+        else
+        {
+            dV = dV_rbf;
         }
         std::cout << "Finished transfer" << std::endl;
     }
@@ -654,15 +744,15 @@ struct multiscale
     Eigen::VectorXi tree_ind;
     Eigen::LLT<Matrix_t> phi_b_llt;
 
-    int nb, ncp, nv, ncol, ndim;
+    int nb, ncp, nv, ndim;
     double r0;
-    Matrix_t a, dV, X, V, dX, phi_b, phi_r;
+    Matrix_t a, dV, X, V, dX, phi_b, phi_r, P, polynomial_coefficients, rhs, psi_v_poly, dV_poly, dV_rbf;
     Eigen::VectorXi active_list;
     std::vector<int> base_set, remaining_set, psi_v_rowptr, psi_v_col_index;
     std::vector<double> psi_v_val;
     Eigen::SparseMatrix<double> LCSC;
     Eigen::VectorXd radii;
-    bool reordered, built;
+    bool reordered, built, incLinearPolynomial, output_progress;
 };
 
 BOOST_PYTHON_MODULE(multiscale)
@@ -673,7 +763,7 @@ BOOST_PYTHON_MODULE(multiscale)
     pygen::convert<double>(pygen::Converters::All, false);
     pygen::convert<int>(pygen::Converters::All, false);
 
-    class_<multiscale>("multiscale", init<Matrix_t, int, double>())
+    class_<multiscale>("multiscale", init<Matrix_t, double, double>())
         .def("sample_control_points", &multiscale::sample_control_points)
         .def("multiscale_solve", &multiscale::multiscale_solve)
         .def("preprocess_V", &multiscale::preprocess_V)

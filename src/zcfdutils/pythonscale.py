@@ -105,15 +105,50 @@ class MultiScale():
         self.dX = dX.copy()
         self.reorder()
         self.generate_P()
+        self.generate_b_KD()
+        self.generate_r_KD()
+        self.generate_LCRS_KD()
+        self.solve_a()
+        self.solve_b_poly()
+        self.solve_remaining_poly()
 
     def generate_P(self):
-        self.P = np.zeros((self.np, 4))
+        self.P = np.zeros((4, self.np))
         self.P[0, :] = 1.0
-        for i in range(3):
-            self.P[i, :] = self.X[:, i]
+        for i in range(1, 4):
+            self.P[i, :] = self.X[:, i - 1]
 
-        print('done')
-        
+    def solve_a(self):
+        self.a_poly = np.linalg.pinv(self.P).T @ self.dX
+
+        print("done")
+
+    def solve_b_poly(self):
+        self.rhs = self.dX - \
+            self.P.T @ np.linalg.pinv(self.P @ self.P.T) @ self.P @ self.dX
+
+        print("done")
+
+        base_dX = self.rhs[self.base_set, :].copy()
+        lu, piv = lu_factor(self.phi_b)
+        base_coef = lu_solve((lu, piv), base_dX)
+
+        self.coef = np.zeros_like(dX)
+        self.coef[:self.nb, :] = base_coef
+
+    def solve_remaining_poly(self):
+        dX_res = self.rhs.copy()
+        # update residual
+        dX_res[self.nb:, :] = dX_res[self.nb:, :] - \
+            self.phi_r @ self.coef[:self.nb, :]
+
+        for i, p in enumerate(self.remaining_set):
+            self.coef[i + self.nb, :] = dX_res[i + self.nb, :]
+            for j in range(self.LCRS.indptr[i], self.LCRS.indptr[i+1]):
+                ptr = self.LCRS.indices[j]
+                coef = self.LCRS.data[j]
+                dX_res[ptr + self.nb, :] = dX_res[ptr + self.nb, :] - \
+                    coef * self.coef[i + self.nb, :]
 
     def generate_b(self):
         phi_b = np.zeros((self.nb, self.nb))
@@ -385,11 +420,11 @@ if __name__ == "__main__":
     start = time.time()
 
     X = np.loadtxt(
-        '/Users/tom.wainwright/Documents/code/zCFD_Utils/data/surface.xyz', skiprows=1)
+        '/home/tom/Documents/University/Coding/zCFD_Utils/data/surface.xyz', skiprows=1)
     V = np.loadtxt(
-        '/Users/tom.wainwright/Documents/code/zCFD_Utils/data/volume.xyz', skiprows=1)
+        '/home/tom/Documents/University/Coding/zCFD_Utils/data/volume.xyz', skiprows=1)
     dX = np.loadtxt(
-        '/Users/tom.wainwright/Documents/code/zCFD_Utils/data/displacements.xyz', skiprows=1)
+        '/home/tom/Documents/University/Coding/zCFD_Utils/data/displacements.xyz', skiprows=1)
 
     nb = 0.1
     r = 4
@@ -398,7 +433,7 @@ if __name__ == "__main__":
     rot_vector = np.array(
         [[np.cos(t), -np.sin(t), 0], [np.sin(t), np.cos(t), 0], [0, 0, 1]])
 
-    dX = X @ rot_vector - X
+    # dX = X @ rot_vector - X
 
     M = MultiScale(X, nb, r)
 
@@ -420,15 +455,15 @@ if __name__ == "__main__":
 
     # M.multiscale_solve(dX)
 
-    # M.preprov_V_KD(V)
-    # M.transfer()
+    M.preprov_V_KD(V)
+    M.transfer()
 
-    # plt.plot(X[:, 0], X[:, 1])
-    # plt.plot(X[:, 0] + dX[:, 0], X[:, 1] + dX[:, 1])
+    plt.plot(X[:, 0], X[:, 1])
+    plt.plot(X[:, 0] + dX[:, 0], X[:, 1] + dX[:, 1])
 
-    # plt.plot(V[:, 0], V[:, 1])
-    # plt.plot(V[:, 0] + M.dV[:, 0], V[:, 1] + M.dV[:, 1])
+    plt.plot(V[:, 0], V[:, 1])
+    plt.plot(V[:, 0] + M.dV[:, 0], V[:, 1] + M.dV[:, 1])
 
-    # # plt.plot(OD[:, 0], OD[:, 1])
+    # plt.plot(OD[:, 0], OD[:, 1])
 
-    # plt.show()
+    plt.show()

@@ -1,5 +1,5 @@
-#include <boost/python.hpp>
-#include <boost/python/numpy.hpp>
+// #include <boost/python.hpp>
+// #include <boost/python/numpy.hpp>
 #include <iostream>
 #include <vector>
 #include <numeric>
@@ -7,6 +7,8 @@
 #include <eigen3/Eigen/Sparse>
 #include "converters.h"
 #include "nanoflann.hpp"
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 namespace p = boost::python;
 namespace np = boost::python::numpy;

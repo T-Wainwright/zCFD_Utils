@@ -35,3 +35,6 @@ Modal_data.h5
 *.hex.h5
 */build/
 !CMakeLists.txt
+!data/surface.xyz
+!data/volume.xyz
+!data/displacements.xyz

@@ -118,6 +118,8 @@ class MultiScale():
         for i in range(1, 4):
             self.P[i, :] = self.X[:, i - 1]
 
+        print("done")
+
     def solve_a(self):
         self.a_poly = np.linalg.pinv(self.P).T @ self.dX
 
@@ -419,7 +421,6 @@ class MultiScale():
         self.remaining_set = [i for i in range(self.nb, self.np)]
 
 
-
 def c2(r):
     psi = ((1 - r)**4) * (4 * r + 1)
     return psi
@@ -468,7 +469,6 @@ if __name__ == "__main__":
     # M.preprov_V_poly()
     M.transfer()
     # M.transfer_poly()
-
 
     plt.plot(X[:, 0], X[:, 1])
     plt.plot(X[:, 0] + dX[:, 0], X[:, 1] + dX[:, 1])

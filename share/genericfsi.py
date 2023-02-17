@@ -28,10 +28,11 @@ import numpy as np
 from zcfd import MPI
 from zcfd.solvers.utils.RuntimeLoader import create_generic_fsi
 from zcfd.utils import config
-from zcfdutils import py_rbf
-from zcfdutils.Wrappers import ATOM_Wrapper
-import matplotlib.pyplot as plt
-from sklearn.cluster import MiniBatchKMeans
+# from zcfdutils import py_rbf
+# from zcfdutils.Wrappers import ATOM_Wrapper
+# import matplotlib.pyplot as plt
+# from sklearn.cluster import MiniBatchKMeans
+from zutils.libmultiscale import multiscale
 
 
 def get_pressure_force(self):
@@ -77,8 +78,7 @@ def post_init(self):
 
     # Rank 0 tasks
     if self.rank == 0:
-        self.atom = ATOM_Wrapper.atom_struct(
-            self.parameters['fsi']['user variables']['blade fe'], **self.parameters['fsi']['user variables'])
+        self.multiscale = multiscale()
         self.atom.struct_nodes[:, 2] = self.atom.struct_nodes[:,
                                                               2] + 3 * np.ones_like(self.atom.struct_nodes[:, 2])
         self.atom.load_modes()

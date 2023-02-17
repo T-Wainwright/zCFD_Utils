@@ -29,6 +29,7 @@ import importlib
 from mpi4py import MPI
 from zcfd.solvers.utils.RuntimeLoader import create_modal_model, create_mapper
 from zcfd.utils import config
+# from zcfd.utils.NastranReader import NastranReader
 from zcfd.utils.GenericModeReader import GenericModeReader
 
 
@@ -37,6 +38,12 @@ def post_init(self):
     self.mappers = {}
     mm_update = []
     rank = MPI.COMM_WORLD.Get_rank()
+
+    import importlib
+
+    multiscaleLib = importlib.import_module("libmultiscale.so")
+
+    model = getattr(multiscaleLib, "Multiscale")
 
     if "modal model" in self.parameters:
         module_suffix = '_INTEL'
@@ -54,10 +61,18 @@ def post_init(self):
             self.mappers[k] = create_mapper(mapperlib, [
                                             True] * MPI.COMM_WORLD.Get_size(), [True] * MPI.COMM_WORLD.Get_size(), self.parameters)
 
+            if self.real_time_step == self.total_time:
+                self.steady_fsi = True
+                self.modal_models[k].set_steady_state()
+                self.fsi_time_step = 1.0
+            else:
+                self.steady_fsi = False
+                self.fsi_time_step = self.real_time_step
+
             # nastran_reader = NastranReader(self.parameters["modal model"][k]["nastran casename"], self.modal_models[k])
-            # nastran_reader.read_grid_points()
             genericModeReader = GenericModeReader(
-                "/home/tom/Documents/University/Coding/cases/MDO_250K/CBA_Modes_Coincident.h5", modal_model=self.modal_models[k])
+                '/home/tom.wainwright/cases/MDO_250K/CBA_Modes_Coincident.h5', self.modal_models[k])
+            # nastran_reader.read_grid_points()
             mode_list = []
             if 'mode list' in self.parameters["modal model"][k]:
                 mode_list = self.parameters["modal model"][k]["mode list"]
@@ -118,7 +133,7 @@ def post_init(self):
                 self.modal_models[mm].read_results(
                     self.parameters['case name'])
                 self.modal_models[mm].deform_mesh(
-                    self.mesh[0], self.real_time_step, False)
+                    self.mesh[0], self.fsi_time_step, False)
             # else:
             self.modal_models[mm].copy_time_history(self.mesh[0])
 
@@ -137,7 +152,7 @@ def post_init(self):
 def start_real_time_cycle(self):
     if self.local_timestepping:
         self.solver.calculate_modal_forcing(
-            self.real_time_step, self.real_time_cycle * self.real_time_step)
+            self.fsi_time_step, self.real_time_cycle * self.fsi_time_step)
         for mm in list(self.modal_models.keys()):
             self.modal_models[mm].copy_time_history(self.mesh[0])
             self.modal_models[mm].copy_force_history()
@@ -149,17 +164,25 @@ def post_advance(self):
         if self.local_timestepping:
             current_time = self.real_time_cycle * self.real_time_step
 
-        self.solver.calculate_modal_forcing(self.real_time_step, current_time)
+        self.solver.calculate_modal_forcing(self.fsi_time_step, current_time)
         for mm in list(self.modal_models.keys()):
-            self.modal_models[mm].march(current_time, self.real_time_step)
-            self.modal_models[mm].deform_mesh(
-                self.mesh[0], self.real_time_step)
+            if self.steady_fsi:
+                self.modal_models[mm].march(
+                    self.solve_cycle, self.fsi_time_step)
+                self.modal_models[mm].copy_time_history(self.mesh[0])
+            else:
+                self.modal_models[mm].march(current_time, self.fsi_time_step)
+
+            self.modal_models[mm].deform_mesh(self.mesh[0], self.fsi_time_step)
 
             if not self.local_timestepping:
                 self.modal_models[mm].copy_time_history(self.mesh[0])
                 self.modal_models[mm].copy_force_history()
 
         self.solver.update_halos(False)
+
+        config.cycle_info = self.solver.init_solution(
+            self.parameters['case name'])
 
 
 def post_output(self):

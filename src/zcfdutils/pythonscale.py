@@ -7,14 +7,19 @@ import time
 
 
 class MultiScale():
-    def __init__(self, X, nb, r, incLinearPolynomial, parent_weighting=False, useKDTrees=True) -> None:
-        self.X = X
-        self.np = self.X.shape[0]
-        self.nb = int(np.ceil(nb * self.np))
-        self.r = r
+    def __init__(self, source_points, base_point_fraction, base_support_radius, rbf='c2', incLinearPolynomial=False, parent_weighting=False, useKDTrees=True) -> None:
+        self.source_points = source_points
+        self.n_control_points = self.source_points.shape[0]
+        self.n_base_set = int(
+            np.ceil(base_point_fraction * self.n_control_points))
+        self.base_support_radius = base_support_radius
         self.poly = incLinearPolynomial
         self.parent_weighting = parent_weighting
         self.KD = useKDTrees
+
+        switcher = {'c0': self.c0, 'c2': self.c2,
+                    'c4': self.c4, 'c6': self.c6}
+        self.rbf = switcher.get(rbf)
 
         self.sequence_control_points()
 
@@ -23,10 +28,11 @@ class MultiScale():
     def sequence_control_points(self):
         # Create active lists
         active_list = []
-        inactive_list = [i for i in range(self.np)]
-        sep_dist = [1e10 for i in range(self.np)]
-        radii = [self.r for i in range(self.np)]
-        parent = [0 for i in range(self.np)]
+        inactive_list = [i for i in range(self.n_control_points)]
+        sep_dist = [1e10 for i in range(self.n_control_points)]
+        radii = [self.base_support_radius for i in range(
+            self.n_control_points)]
+        parent = [0 for i in range(self.n_control_points)]
         base_set = []
         remaining_set = []
 
@@ -34,7 +40,6 @@ class MultiScale():
 
         # Grab first control point
         active_node = inactive_list[0]
-        # sep_dist[active_node] = -1e10
         active_list.append(active_node)
         inactive_list.remove(active_node)
         base_set.append(active_node)
@@ -43,13 +48,13 @@ class MultiScale():
 
         # build KD Tree to speed up radius searches
 
-        X_tree = KDTree(self.X, leaf_size=10, metric='euclidean')
+        X_tree = KDTree(self.source_points, leaf_size=10, metric='euclidean')
 
         # Cycle over remaining points
 
-        while n_active < self.np:
+        while n_active < self.n_control_points:
             ind, dist = X_tree.query_radius(
-                [self.X[active_node]], sep_dist[active_node], return_distance=True)
+                [self.source_points[active_node]], sep_dist[active_node], return_distance=True)
             # dist, ind = X_tree.query(
             #     [self.X[active_node]], self.np)
 
@@ -64,7 +69,7 @@ class MultiScale():
 
             if self.parent_weighting:
                 # if searching base set, find the node with the max separation from the last added node
-                if n_active < self.nb:
+                if n_active < self.n_base_set:
                     children = [parent.count(i) for i in active_list]
                     iMax = np.argmax(children)
                     for i, p in enumerate(parent):
@@ -83,14 +88,12 @@ class MultiScale():
             active_list.append(active_node)
             inactive_list.remove(active_node)
 
-            if n_active < self.nb:
-                radii[active_node] = self.r
+            if n_active < self.n_base_set:
+                radii[active_node] = self.base_support_radius
                 base_set.append(active_node)
             else:
                 radii[active_node] = sep_dist[active_node]
                 remaining_set.append(active_node)
-
-            # sep_dist[active_node] = -1e10
 
             n_active += 1
 
@@ -105,8 +108,8 @@ class MultiScale():
         else:
             self.preprov_V(target_mesh)
 
-    def multiscale_solve(self, dX):
-        self.dX = dX.copy()
+    def multiscale_solve(self, source_data):
+        self.source_data = source_data.copy()
         self.reorder()
 
         if self.KD:
@@ -128,83 +131,97 @@ class MultiScale():
         self.solve_remaining()
 
     def transfer_solution(self):
-        self.dV_rbf = np.zeros_like(self.V)
-        n_b_coef = 0
-        n_q_coef = 0
-        n_coef = 0
-        for i in range(self.nV):
-            for k in range(self.psi_v_rowptr[i], self.psi_v_rowptr[i + 1]):
-                if self.col_index[k] == 0:
+        self.dV_rbf = np.zeros_like(self.target_mesh)
+        n_oper = 0
+
+        for i in range(self.n_target_points):
+            for k in range(self.psi_v.indptr[i], self.psi_v.indptr[i + 1]):
+                if self.psi_v.indices[k] == 0:
                     for q in self.base_set:
-                        r = np.linalg.norm(self.V[i, :] - self.X[q, :])
+                        r = np.linalg.norm(
+                            self.target_mesh[i, :] - self.source_points[q, :])
                         e = r / self.radii[q]
 
                         if e <= 1:
-                            coef = c2(e)
+                            coef = self.rbf(e)
                             self.dV_rbf[i, :] += coef * self.coef[q, :]
+                            n_oper += 1
+
+                            # print("i = {}, k = {}, q = {}, coef = {}\n".format(
+                            #     i, k, q, coef))
 
                 else:
-                    q = self.col_index[k]
-                    r = np.linalg.norm(self.V[i, :] - self.X[q, :])
+                    q = self.psi_v.indices[k]
+                    r = np.linalg.norm(
+                        self.target_mesh[i, :] - self.source_points[q, :])
                     e = r / self.radii[q]
 
-                    if e <= 1:
-                        coef = c2(e)
-                        self.dV_rbf[i, :] += coef * self.coef[q, :]
+                if e <= 1:
+                    coef = self.rbf(e)
+                    self.dV_rbf[i, :] += coef * self.coef[q, :]
+                    n_oper += 1
 
-        self.n_b_coef = n_b_coef
-        self.n_q_coef = n_q_coef
-        self.n_coef = n_coef
+                # q = self.psi_v.indices[k]
+
+                # coef = self.psi_v.data[k]
+                # self.dV_rbf[i, :] += coef * self.coef[q, :]
+                # n_oper += 1
 
         if self.poly:
-            self.dV_poly = np.zeros_like(self.V)
+            self.dV_poly = np.zeros_like(self.target_mesh)
             self.dV_poly = self.A_poly @ self.a_poly
             self.dV = self.dV_rbf + self.dV_poly
         else:
             self.dV = self.dV_rbf
 
+        # print(n_oper)
+
     # Volume mesh preprocessing calls
 
     def preprov_V(self, V):
-        self.V = V.copy()
-        self.nV = V.shape[0]
+        self.target_mesh = V.copy()
+        self.n_target_points = V.shape[0]
 
         col_index_temp = []
-        psi_v_rowptr = np.zeros(self.nV + 1, dtype=int)
+        psi_v_rowptr = np.zeros(self.n_target_points + 1, dtype=int)
 
         j = 0
 
-        for i in range(self.nV):
+        for i in range(self.n_target_points):
             col_index_temp.append(0)
             j += 1
             for q in self.remaining_set:
-                r = np.linalg.norm(self.V[i, :] - self.X[q, :])
+                r = np.linalg.norm(
+                    self.target_mesh[i, :] - self.source_points[q, :])
                 e = r / self.radii[q]
                 if e < 1:
                     col_index_temp.append(int(q))
                     j += 1
             psi_v_rowptr[i + 1] = int(j)
 
-        self.psi_v_rowptr = psi_v_rowptr
-        self.col_index = col_index_temp
+        data = [0 for i in col_index_temp]
+
+        self.LCRS = sparse.csc_matrix((data, col_index_temp, psi_v_rowptr))
 
         print('done')
 
-    def preprov_V_KD(self, V):
-        self.V = V.copy()
-        self.nV = V.shape[0]
+    def preprov_V_KD(self, target_mesh):
+        self.target_mesh = target_mesh.copy()
+        self.n_target_points = target_mesh.shape[0]
 
-        X_tree = KDTree(self.V, leaf_size=10, metric='euclidean')
+        X_tree = KDTree(self.target_mesh, leaf_size=10, metric='euclidean')
 
-        psi_v = [[0] for i in range(self.nV)]
-        psi_v_val_temp = [[0] for i in range(self.nV)]
+        data = []
+        row_index = []
+        col_index = []
 
-        for i in self.remaining_set:
+        for i in range(self.n_control_points):
             ind, dist = X_tree.query_radius(
-                [self.X[i]], self.radii[i], return_distance=True)
+                [self.source_points[i]], self.radii[i], return_distance=True)
             for index, rad in zip(ind[0], dist[0]):
-                psi_v[index].append(int(i))
-                psi_v_val_temp[index].append(c2(rad / self.radii[i]))
+                row_index.append(index)
+                col_index.append(i)
+                data.append(self.rbf(rad / self.radii[i]))
                 if rad / self.radii[i] > 1:
                     print("ERROR")
 
@@ -214,45 +231,83 @@ class MultiScale():
 
         k = 0
 
-        for i in range(self.nV):
-            k += len(psi_v[i])
-            psi_v_rowptr.append(k)
-            psi_v_val.append(0)
-            for j in range(len(psi_v[i])):
-                col_index_temp.append(psi_v[i][j])
-                psi_v_val.append(psi_v_val_temp[i][j])
+        # for i in range(self.n_target_points):
+        #     k += len(psi_v[i])
+        #     psi_v_rowptr.append(k)
+        #     psi_v_val.append(0)
+        #     for j in range(len(psi_v[i])):
+        #         col_index_temp.append(psi_v[i][j])
+        #         psi_v_val.append(psi_v_val_temp[i][j])
 
-        self.psi_v_rowptr = psi_v_rowptr
-        self.col_index = col_index_temp
-        self.psi_v_val = psi_v_val
+        self.psi_v = sparse.csr_matrix(
+            (data, (row_index, col_index)), shape=(self.n_target_points, self.n_control_points))
 
         if self.poly:
-            self.A_poly = np.ones((self.nV, 4))
-            self.A_poly[:, 1:4] = self.V
+            self.A_poly = np.ones((self.n_target_points, 4))
+            self.A_poly[:, 1:4] = self.target_mesh
+
+    # def preprov_V_KD(self, V):
+    #     self.target_mesh = V.copy()
+    #     self.n_target_points = V.shape[0]
+
+    #     X_tree = KDTree(self.target_mesh, leaf_size=10, metric='euclidean')
+
+    #     psi_v = [[0] for i in range(self.n_target_points)]
+    #     psi_v_val_temp = [[0] for i in range(self.n_target_points)]
+
+    #     for i in range(self.n_control_points):
+    #         ind, dist = X_tree.query_radius(
+    #             [self.source_points[i]], self.radii[i], return_distance=True)
+    #         for index, rad in zip(ind[0], dist[0]):
+    #             psi_v[index].append(int(i))
+    #             psi_v_val_temp[index].append(self.rbf(rad / self.radii[i]))
+    #             if rad / self.radii[i] > 1:
+    #                 print("ERROR")
+
+    #     psi_v_rowptr = [0]
+    #     col_index_temp = []
+    #     psi_v_val = []
+
+    #     k = 0
+
+    #     for i in range(self.n_target_points):
+    #         k += len(psi_v[i])
+    #         psi_v_rowptr.append(k)
+    #         psi_v_val.append(0)
+    #         for j in range(len(psi_v[i])):
+    #             col_index_temp.append(psi_v[i][j])
+    #             psi_v_val.append(psi_v_val_temp[i][j])
+
+    #     self.psi_v = psi_v_dummy(psi_v_val, col_index_temp, psi_v_rowptr)
+
+    #     if self.poly:
+    #         self.A_poly = np.ones((self.n_target_points, 4))
+    #         self.A_poly[:, 1:4] = self.target_mesh
 
     # Matrix Generation
 
     def generate_P(self):
-        self.P = np.ones((4, self.np))
-        self.P[1:4, :] = self.X.T
+        self.P = np.ones((4, self.n_control_points))
+        self.P[1:4, :] = self.source_points.T
 
         print("done")
 
     def generate_P_reverse(self):
-        self.P_reverse = np.ones((4, self.nV))
-        self.P_reverse[1:4, :] = self.V.T
+        self.P_reverse = np.ones((4, self.n_target_points))
+        self.P_reverse[1:4, :] = self.target_mesh.T
 
     def generate_b(self):
-        phi_b = np.zeros((self.nb, self.nb))
+        phi_b = np.zeros((self.n_base_set, self.n_base_set))
         for i, p in enumerate(self.base_set):
             for j, q in enumerate(self.base_set):
-                r = np.linalg.norm(self.X[p] - self.X[q]) / self.radii[q]
+                r = np.linalg.norm(
+                    self.source_points[p] - self.source_points[q]) / self.radii[q]
                 if r <= 1.0:
-                    phi_b[i, j] = c2(r)
+                    phi_b[i, j] = self.rbf(r)
 
         # fill via symmetry
-        for i in range(self.nb):
-            for j in range(self.nb):
+        for i in range(self.n_base_set):
+            for j in range(self.n_base_set):
                 coef = max([phi_b[i, j], phi_b[j, i]])
                 phi_b[i, j] = coef
                 phi_b[j, i] = coef
@@ -260,19 +315,19 @@ class MultiScale():
         self.phi_b = phi_b
 
     def generate_b_KD(self):
-        phi_b = np.zeros((self.nb, self.nb))
-        X_base = self.X[0:self.nb, :]
+        phi_b = np.zeros((self.n_base_set, self.n_base_set))
+        X_base = self.source_points[0:self.n_base_set, :]
         X_tree = KDTree(X_base, leaf_size=10)
 
         for i, p in enumerate(self.base_set):
             ind, dist = X_tree.query_radius(
-                [self.X[p, :]], self.r, return_distance=True)
+                [self.source_points[p, :]], self.base_support_radius, return_distance=True)
             for index, rad in zip(ind[0], dist[0]):
-                phi_b[i, index] = c2(rad / self.r)
+                phi_b[i, index] = self.rbf(rad / self.base_support_radius)
 
         # fill via symmetry
-        for i in range(self.nb):
-            for j in range(self.nb):
+        for i in range(self.n_base_set):
+            for j in range(self.n_base_set):
                 coef = max([phi_b[i, j], phi_b[j, i]])
                 phi_b[i, j] = coef
                 phi_b[j, i] = coef
@@ -280,16 +335,17 @@ class MultiScale():
         self.phi_b = phi_b
 
     def generate_full_mat(self):
-        phi_b = np.zeros((self.np, self.np))
-        for i in range(self.np):
-            for j in range(self.np):
-                r = np.linalg.norm(self.X[i, :] - self.X[j, :]) / self.r
+        phi_b = np.zeros((self.n_control_points, self.n_control_points))
+        for i in range(self.n_control_points):
+            for j in range(self.n_control_points):
+                r = np.linalg.norm(
+                    self.source_points[i, :] - self.source_points[j, :]) / self.base_support_radius
                 if r <= 1.0:
-                    phi_b[i, j] = c2(r)
+                    phi_b[i, j] = self.rbf(r)
 
         # fill via symmetry
-        for i in range(self.np):
-            for j in range(self.np):
+        for i in range(self.n_control_points):
+            for j in range(self.n_control_points):
                 coef = max([phi_b[i, j], phi_b[j, i]])
                 phi_b[i, j] = coef
                 phi_b[j, i] = coef
@@ -297,107 +353,115 @@ class MultiScale():
         self.phi_b = phi_b
 
     def generate_r(self):
-        phi_r = np.zeros((self.np - self.nb, self.nb))
+        phi_r = np.zeros(
+            (self.n_control_points - self.n_base_set, self.n_base_set))
         for i, p in enumerate(self.remaining_set):
             for j, q in enumerate(self.base_set):
-                r = np.linalg.norm(self.X[p] - self.X[q]) / self.radii[q]
+                r = np.linalg.norm(
+                    self.source_points[p] - self.source_points[q]) / self.radii[q]
                 if r <= 1.0:
-                    phi_r[i, j] = c2(r)
+                    phi_r[i, j] = self.rbf(r)
 
         self.phi_r = phi_r
 
     def generate_r_KD(self):
-        phi_r = np.zeros((self.np - self.nb, self.nb))
-        X_remaining = self.X[self.nb:, :]
+        phi_r = np.zeros(
+            (self.n_control_points - self.n_base_set, self.n_base_set))
+        X_remaining = self.source_points[self.n_base_set:, :]
         X_tree = KDTree(X_remaining, leaf_size=10)
 
         for i, p in enumerate(self.base_set):
             ind, dist = X_tree.query_radius(
-                [self.X[p, :]], self.radii[p], return_distance=True)
+                [self.source_points[p, :]], self.radii[p], return_distance=True)
 
             for index, rad in zip(ind[0], dist[0]):
-                phi_r[index, i] = c2(rad / self.radii[i])
+                phi_r[index, i] = self.rbf(rad / self.radii[i])
 
         self.phi_r = phi_r
 
     def generate_LCRS(self):
-        LCRS = np.zeros((self.np - self.nb, self.np - self.nb))
+        LCRS = np.zeros((self.n_control_points - self.n_base_set,
+                         self.n_control_points - self.n_base_set))
         for i, p in enumerate(self.remaining_set):
-            for j in range(i+1):
+            for j in range(i + 1):
                 q = self.remaining_set[j]
-                r = np.linalg.norm(self.X[p] - self.X[q]) / self.radii[q]
+                r = np.linalg.norm(
+                    self.source_points[p] - self.source_points[q]) / self.radii[q]
                 if r <= 1.0:
-                    LCRS[i, j] = c2(r)
+                    LCRS[i, j] = self.rbf(r)
 
         self.LCRS = sparse.csc_matrix(LCRS)
 
     def generate_LCRS_KD(self):
-        LCRS = np.zeros((self.np - self.nb, self.np - self.nb))
-        X_remaining = self.X[self.nb:, :]
+        LCRS = np.zeros((self.n_control_points - self.n_base_set,
+                         self.n_control_points - self.n_base_set))
+        X_remaining = self.source_points[self.n_base_set:, :]
         X_tree = KDTree(X_remaining, leaf_size=10)
         for i, p in enumerate(self.remaining_set):
             ind, dist = X_tree.query_radius(
-                [self.X[p, :]], self.radii[p], return_distance=True)
+                [self.source_points[p, :]], self.radii[p], return_distance=True)
 
             for index, rad in zip(ind[0], dist[0]):
-                LCRS[i, index] = c2(rad / self.radii[p])
+                LCRS[i, index] = self.rbf(rad / self.radii[p])
 
         self.LCRS = sparse.csc_matrix(LCRS)
 
     # Solve calls
 
     def solve_a(self):
-        self.a_poly = np.linalg.pinv(self.P).T @ self.dX
+        self.a_poly = np.linalg.pinv(self.P).T @ self.source_data
 
         print("done")
 
     def solve_b(self):
         if self.poly:
-            self.rhs = self.dX - \
-                self.P.T @ np.linalg.pinv(self.P @ self.P.T) @ self.P @ self.dX
+            self.rhs = self.source_data - \
+                self.P.T @ np.linalg.pinv(self.P @
+                                          self.P.T) @ self.P @ self.source_data
         else:
-            self.rhs = self.dX
+            self.rhs = self.source_data
         base_rhs = self.rhs[self.base_set, :].copy()
         lu, piv = lu_factor(self.phi_b)
         base_coef = lu_solve((lu, piv), base_rhs)
 
-        self.coef = np.zeros_like(self.dX)
-        self.coef[:self.nb, :] = base_coef
+        self.coef = np.zeros_like(self.source_data)
+        self.coef[:self.n_base_set, :] = base_coef
 
     def solve_remaining(self):
         dX_res = self.rhs.copy()
         # update residual
-        dX_res[self.nb:, :] = dX_res[self.nb:, :] - \
-            self.phi_r @ self.coef[:self.nb, :]
+        dX_res[self.n_base_set:, :] = dX_res[self.n_base_set:, :] - \
+            self.phi_r @ self.coef[:self.n_base_set, :]
 
         for i, p in enumerate(self.remaining_set):
-            self.coef[i + self.nb, :] = dX_res[i + self.nb, :]
-            for j in range(self.LCRS.indptr[i], self.LCRS.indptr[i+1]):
+            self.coef[i + self.n_base_set, :] = dX_res[i + self.n_base_set, :]
+            for j in range(self.LCRS.indptr[i], self.LCRS.indptr[i + 1]):
                 ptr = self.LCRS.indices[j]
                 coef = self.LCRS.data[j]
-                dX_res[ptr + self.nb, :] = dX_res[ptr + self.nb, :] - \
-                    coef * self.coef[i + self.nb, :]
+                dX_res[ptr + self.n_base_set, :] = dX_res[ptr + self.n_base_set, :] - \
+                    coef * self.coef[i + self.n_base_set, :]
 
     def reorder(self):
-        X_new = self.X[self.active_list, :]
-        dX_new = self.dX[self.active_list, :]
+        X_new = self.source_points[self.active_list, :]
+        dX_new = self.source_data[self.active_list, :]
         radii_new = [self.radii[i] for i in self.active_list]
 
-        self.X = X_new
-        self.dX = dX_new
+        self.source_points = X_new
+        self.source_data = dX_new
         self.radii = radii_new
-        self.base_set = [i for i in range(self.nb)]
-        self.remaining_set = [i for i in range(self.nb, self.np)]
+        self.base_set = [i for i in range(self.n_base_set)]
+        self.remaining_set = [i for i in range(
+            self.n_base_set, self.n_control_points)]
 
     def solve_reverse_poly(self, dV):
         return np.linalg.pinv(self.P_reverse).T @ dV
 
     def generate_A_poly_reverse(self):
-        self.A_poly_reverse = np.ones((4, self.np))
-        self.A_poly_reverse[1:4, :] = self.X.T
+        self.A_poly_reverse = np.ones((4, self.n_control_points))
+        self.A_poly_reverse[1:4, :] = self.source_points.T
 
     def reverse_interpolate(self, dV):
-        self.reverse_coefficients = np.zeros_like(self.V)
+        self.reverse_coefficients = np.zeros_like(self.target_mesh)
         if self.poly:
             self.generate_P_reverse()
             self.generate_A_poly_reverse()
@@ -409,57 +473,81 @@ class MultiScale():
         else:
             self.rhs_reverse = dV
 
-        for i in range(self.nV):
-            for k in range(self.psi_v_rowptr[i], self.psi_v_rowptr[i + 1]):
-                if self.col_index[k] == 0:
+        for i in range(self.n_target_points):
+            for k in range(self.psi_v.indptr[i], self.psi_v.indptr[i + 1]):
+                if self.psi_v.indices[k] == 0:
                     for q in self.base_set:
-                        r = np.linalg.norm(self.V[i, :] - self.X[q, :])
+                        r = np.linalg.norm(
+                            self.target_mesh[i, :] - self.source_points[q, :])
                         e = r / self.radii[q]
 
                         if e <= 1:
-                            coef = c2(e)
+                            coef = self.rbf(e)
                             self.reverse_coefficients[i,
                                                       :] += coef * self.rhs_reverse[i, :]
 
                 else:
-                    q = self.col_index[k]
-                    r = np.linalg.norm(self.V[i, :] - self.X[q, :])
+                    q = self.psi_v.indices[k]
+                    r = np.linalg.norm(
+                        self.target_mesh[i, :] - self.source_points[q, :])
                     e = r / self.radii[q]
 
                     if e <= 1:
-                        coef = c2(e)
+                        coef = self.rbf(e)
                         self.reverse_coefficients[i,
                                                   :] += coef * self.rhs_reverse[i, :]
 
     def reverse_solve(self):
         reverse_coefficients_residual = self.reverse_coefficients.copy()
-        self.dX_i_rbf = np.zeros_like(self.X)
-        for i in range(self.np - 1, self.nb, -1):
+        self.dX_i_rbf = np.zeros_like(self.source_points)
+        for i in range(self.n_control_points - 1, self.n_base_set, -1):
             self.dX_i_rbf[i, :] = self.reverse_coefficients[i, :]
             for j, p in enumerate(self.LCRS.indices):
                 r = min(np.argmin(abs(self.LCRS.indptr - j * np.ones_like(self.LCRS.indptr))),
-                        np.argmin(abs(j * np.ones_like(self.LCRS.indptr) - self.LCRS.indptr))) + self.nb
+                        np.argmin(abs(j * np.ones_like(self.LCRS.indptr) - self.LCRS.indptr))) + self.n_base_set
                 if p == 1:
                     coef = self.LCRS.data[j]
                     reverse_coefficients_residual[r,
                                                   :] -= coef * self.dX_i_rbf[i, :]
 
-        reverse_coefficients_residual[0:self.nb,
-                                      :] -= self.phi_r.T @ self.dX_i_rbf[self.nb:, :]
+        reverse_coefficients_residual[0:self.n_base_set,
+                                      :] -= self.phi_r.T @ self.dX_i_rbf[self.n_base_set:, :]
 
         lu, piv = lu_factor(self.phi_b)
-        self.dX_i_rbf[0:self.nb] = lu_solve(
-            (lu, piv), reverse_coefficients_residual[0:self.nb, :])
+        self.dX_i_rbf[0:self.n_base_set] = lu_solve(
+            (lu, piv), reverse_coefficients_residual[0:self.n_base_set, :])
 
         if self.poly:
             self.dX_i = self.dX_i_rbf + self.dX_i_poly
         else:
             self.dX_i = self.dX_i_rbf
 
+    @ staticmethod
+    def c0(r):
+        psi = (1 - r)**2
+        return psi
 
-def c2(r):
-    psi = ((1 - r)**4) * (4 * r + 1)
-    return psi
+    @ staticmethod
+    def c2(r):
+        psi = ((1 - r)**4) * (4 * r + 1)
+        return psi
+
+    @ staticmethod
+    def c4(r):
+        psi = ((1 - r)**6) * (35 * r**2 + 18 * r + 3)
+        return psi
+
+    @ staticmethod
+    def c6(r):
+        psi = ((1 - r)**8) * (32 * r**3 + 25 * r**2 + 8 * r + 1)
+        return psi
+
+
+class psi_v_dummy():
+    def __init__(self, data, indices, indptr) -> None:
+        self.data = data
+        self.indices = indices
+        self.indptr = indptr
 
 
 if __name__ == "__main__":
@@ -506,7 +594,7 @@ if __name__ == "__main__":
     M.reverse_interpolate(aero_forces)
     M.reverse_solve()
 
-    # dV  isdisplacement of aerodynamic surface
+    # dV  is displacement of aerodynamic surface
     aero_displacement = M.dV
     structural_forces = M.dX_i
 
@@ -518,7 +606,8 @@ if __name__ == "__main__":
     plt.plot(aero_surface[:, 0] + aero_displacement[:, 0],
              aero_surface[:, 1] + aero_displacement[:, 1])
 
-    print("sum of aero forces: {}".format(np.sum(aero_forces, axis=0)))
+    print("sum of aero forces: {}".format(
+        np.sum(aero_forces, axis=0)))
     print("sum of structural forces: {}".format(
         np.sum(structural_forces, axis=0)))
 

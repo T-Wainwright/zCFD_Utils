@@ -4,6 +4,7 @@ from scipy.linalg import lu_factor, lu_solve
 import matplotlib.pyplot as plt
 from sklearn.neighbors import KDTree
 import time
+import zcfdutils.py_rbf
 
 
 class MultiScale():
@@ -132,7 +133,8 @@ class MultiScale():
 
     def transfer_solution(self):
         self.dV_rbf = np.zeros_like(self.target_mesh)
-        n_oper = 0
+        n_oper_base = 0
+        n_oper_refine = 0
 
         for i in range(self.n_target_points):
             for k in range(self.psi_v.indptr[i], self.psi_v.indptr[i + 1]):
@@ -145,10 +147,10 @@ class MultiScale():
                         if e <= 1:
                             coef = self.rbf(e)
                             self.dV_rbf[i, :] += coef * self.coef[q, :]
-                            n_oper += 1
+                            coef1 = coef
+                            n_oper_base += 1
 
-                            # print("i = {}, k = {}, q = {}, coef = {}\n".format(
-                            #     i, k, q, coef))
+
 
                 else:
                     q = self.psi_v.indices[k]
@@ -156,16 +158,23 @@ class MultiScale():
                         self.target_mesh[i, :] - self.source_points[q, :])
                     e = r / self.radii[q]
 
-                if e <= 1:
-                    coef = self.rbf(e)
-                    self.dV_rbf[i, :] += coef * self.coef[q, :]
-                    n_oper += 1
+                    if e <= 1:
+                        coef = self.rbf(e)
+                        coef2 = coef
+                        self.dV_rbf[i, :] += coef * self.coef[q, :]
+                        n_oper_refine += 1
 
                 # q = self.psi_v.indices[k]
 
-                # coef = self.psi_v.data[k]
-                # self.dV_rbf[i, :] += coef * self.coef[q, :]
+                # coef3 = self.psi_v.data[k]
+                # if coef3 != coef2:
+                #     print("error")
+                # # self.dV_rbf[i, :] += coef * self.coef[q, :]
                 # n_oper += 1
+
+            
+            # print(n_oper)
+            # n_oper = 0
 
         if self.poly:
             self.dV_poly = np.zeros_like(self.target_mesh)
@@ -174,7 +183,8 @@ class MultiScale():
         else:
             self.dV = self.dV_rbf
 
-        # print(n_oper)
+        print(n_oper_base)
+        print(n_oper_refine)
 
     # Volume mesh preprocessing calls
 
@@ -578,7 +588,7 @@ if __name__ == "__main__":
     aero_forces[:, 1] = 1.0
 
     nb = 0.1
-    r = 1
+    r = 100
     t = np.deg2rad(10)
 
     rot_vector = np.array(
@@ -586,7 +596,7 @@ if __name__ == "__main__":
 
     # dX = X @ rot_vector - X
 
-    M = MultiScale(structural_surface, nb, r, incLinearPolynomial=True)
+    M = MultiScale(structural_surface, nb, r, incLinearPolynomial=False)
     M.preprocess_target_mesh(aero_surface)
     M.multiscale_solve(structural_displacement)
     M.transfer_solution()
@@ -615,5 +625,17 @@ if __name__ == "__main__":
     # plt.plot(V[:, 0] + M.dV_poly[:, 0], V[:, 1] + M.dV_poly[:, 1])
 
     # plt.plot(OD[:, 0], OD[:, 1])
+
+
+
+    IDWMapper = zcfdutils.py_rbf.IDWMapper(aero_surface, structural_surface)
+    struct_force = IDWMapper.map(aero_forces)
+
+
+    
+    print("sum of aero forces: {}".format(
+        np.sum(aero_forces, axis=0)))
+    print("sum of structural forces: {}".format(
+        np.sum(struct_force, axis=0)))
 
     plt.show()

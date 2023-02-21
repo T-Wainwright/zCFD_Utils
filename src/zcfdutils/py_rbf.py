@@ -21,6 +21,7 @@ import h5py
 import matplotlib.pyplot as plt
 import zcfdutils.Wrappers.ATOM_Wrapper
 from sklearn.cluster import MiniBatchKMeans
+from sklearn.neighbors import KDTree
 
 
 # Functions
@@ -231,3 +232,22 @@ def anorm(vec):
 def norm(vec):
     r = vec[0]**2 + vec[1]**2 + vec[2] ** 2
     return r
+
+class IDWMapper():
+    def __init__(self, source, target) -> None:
+        self.source = source
+        self.target = target
+
+        self.ns = source.shape[0]
+        self.nt = target.shape[0]
+
+    def map(self, source_data, n=4):
+        target_data = np.zeros_like(self.target)
+        X_tree = KDTree(self.target, leaf_size = 10, metric='euclidean')
+        for i in range(self.ns):
+            dist, ind = X_tree.query([self.source[i]], k=n)    
+            sum_of_distances = sum(dist[0])
+            for index, rad in zip(ind[0], dist[0]):
+                target_data[index, :] += source_data[i, :] * rad / sum_of_distances
+
+        return target_data

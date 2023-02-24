@@ -28,11 +28,12 @@ import numpy as np
 from zcfd import MPI
 from zcfd.solvers.utils.RuntimeLoader import create_generic_fsi
 from zcfd.utils import config
-from zutil.libmultiscale import multiscale
+from libmultiscale import multiscale
 # from zcfd.utils.GenericModeReader import GenericModeReader
 # from zcfd.utils.NastranReader import NastranReader
 from zcfd.utils.coupling.genericmodalmodel import genericmodalmodel
 from zcfdutils.Wrappers.modeReader import cba_modal
+from zcfdutils.py_rbf import IDWMapper
 
 
 def get_pressure_force(self):
@@ -81,18 +82,22 @@ def post_init(self):
     # nastran_modal_model.read_modes(self.parameters[])
     CBA_modal_model = cba_modal(self.parameters["fsi"]["user variables"]["cba filename"])
     CBA_modal_model.calculate_mode_frequencies()
+    CBA_modal_model.grid[:, 1] += 0.5
     # self.genericmodalmodel = genericmodalmodel(nastran_modal_model.grid_points, nastran_modal_model.mode_freqs, nastran_modal_model.mode_data)
-    self.genericmodalmodel = genericmodalmodel(CBA_modal_model.grid, CBA_modal_model.mode_frequencies, CBA_modal_model.eigenvectors, mode_list=self.parameters['fsi']['user variables']['mode list'])
+    self.genericmodalmodel = genericmodalmodel(CBA_modal_model.grid, CBA_modal_model.mode_frequencies, CBA_modal_model.eigenvectors)
 
     # Rank 0 tasks
     if self.rank == 0:
-        self.multiscale = multiscale(flat_centres, self.parameters['fsi']['base point fraction'], self.parameters['fsi']['alpha'])
+        self.IDWMapper = IDWMapper(flat_centres, CBA_modal_model.grid)
+        config.logger.info("X shape: {} x {}".format(flat_centres.shape[0], flat_centres.shape[1]))
+
+        self.multiscale = multiscale(self.genericmodalmodel.grid_points, self.parameters['fsi']['base point fraction'], self.parameters['fsi']['alpha'])
         self.multiscale.sample_control_points(False)
 
         self.multiscale2 = multiscale(self.genericmodalmodel.grid_points, self.parameters['fsi']['base point fraction'], self.parameters['fsi']['alpha'])
         self.multiscale2.sample_control_points(False)
 
-        self.multiscale.preprocess_V(self.genericmodalmodel.grid_points)
+        self.multiscale.preprocess_V(flat_centres)
         self.multiscale2.preprocess_V(flat_nodes)
 
     MPI.COMM_WORLD.Barrier()
@@ -102,59 +107,40 @@ def post_init(self):
 
 
 def start_real_time_cycle(self):
-    # # initialise displacement list
-    # u = [0.0 * ii for ii in range(self.num_nodes * 3)]
-    # # self.u_total = u
-    # pressure_force = get_pressure_force(self)
-    # dt = self.real_time_step
-    # dt = 1
-    # if self.rank == 0:
-    #     # rank 0 tasks
-    #     self.multiscale.multiscale_solve(pressure_force)
-    #     self.multiscale.multiscale_transfer()
-    #     structural_force = self.multiscale.get_dV()
-
-    #     modal_forcing = self.genericmodalmodel.calculate_modal_forcing(structural_force)
-    #     config.logger.info("Modal Forcing: {}".format(modal_forcing[0]))
-    #     displacements = self.genericmodalmodel.calculate_modal_displacements(modal_forcing, 0.5)
-    #     self.multiscale2.multiscale_solve(displacements)
-    #     self.multiscale2.multiscale_transfer()
-    #     aero_displacements = self.multiscale2.get_dV()
-
-
-    #     aero_disp = list(aero_displacements.flatten())
-    #     u = aero_disp
-
-    # u = MPI.COMM_WORLD.bcast(u, root=0)
-    # dt = MPI.COMM_WORLD.bcast(dt, root=0)
-    # # Perform RBF and mesh updates
-    # self.fsi.deform_mesh(self.mesh[0], u, dt, False)
-    pass
-
-
-def post_advance(self):
-    if self.total_cycles % self.parameters['fsi']['user variables']['fsi frequency'] == 0:
+    if (self.total_cycles % self.parameters['fsi']['user variables']['fsi frequency'] == 0) and (self.total_cycles != 0):
         # initialise displacement list
         u = [0.0 * ii for ii in range(self.num_nodes * 3)]
         pressure_force = get_pressure_force(self)
         dt = self.real_time_step
-        dt = 1
         if self.rank == 0:
             # rank 0 tasks
             config.logger.info("Pressure forces: {}".format(np.sum(pressure_force, axis=0)))
-            self.multiscale.multiscale_solve(pressure_force)
-            self.multiscale.multiscale_transfer()
-            structural_force = self.multiscale.get_dV()
+            config.logger.info("dX shape: {} x {}".format(pressure_force.shape[0], pressure_force.shape[1]))
+            structural_force = self.IDWMapper.map(pressure_force, n=10)
 
             modal_forcing = self.genericmodalmodel.calculate_modal_forcing(structural_force)
+            config.logger.info("Checking conservation of forces: ")
             config.logger.info("Structural forces: {}".format(np.sum(structural_force, axis=0)))
             config.logger.info("Modal Forcing: {}".format(modal_forcing[0]))
             print(modal_forcing)
-            displacements = self.genericmodalmodel.calculate_modal_displacements(modal_forcing, 0.5)
-            self.multiscale2.multiscale_solve(displacements)
+            # displacements = self.genericmodalmodel.calculate_modal_displacements(modal_forcing, 0.5)
+            displacements = self.genericmodalmodel.march_modal_model(modal_forcing, self.real_time_step)
+            self.multiscale2.multiscale_solve(displacements, True)
             self.multiscale2.multiscale_transfer()
             aero_displacements = self.multiscale2.get_dV()
 
+            self.multiscale.multiscale_solve(displacements, True)
+            self.multiscale.multiscale_transfer()
+            centre_displacements = self.multiscale.get_dV()
+
+            np.savetxt('displacements.csv', aero_displacements, delimiter=', ')
+
+            structural_virtual_work = np.multiply(structural_force, displacements)
+            aero_virtual_work = np.multiply(centre_displacements, pressure_force)
+
+            config.logger.info("Checking conservation of virtual work: ")
+            config.logger.info("Structural VW: {}".format(np.sum(structural_virtual_work, axis=0)))
+            config.logger.info("Aero VW: {}".format(np.sum(aero_virtual_work, axis=0)))
 
             aero_disp = list(aero_displacements.flatten())
             u = aero_disp
@@ -162,8 +148,47 @@ def post_advance(self):
         u = MPI.COMM_WORLD.bcast(u, root=0)
         dt = MPI.COMM_WORLD.bcast(dt, root=0)
         # Perform RBF and mesh updates
-        print(max(u))
+        config.logger.info("max U: {}".format(max(u)))
         self.fsi.deform_mesh(self.mesh[0], u, dt, False)
+
+
+
+def post_advance(self):
+    # if (self.total_cycles % self.parameters['fsi']['user variables']['fsi frequency'] == 0) and (self.total_cycles != 0):
+    #     # initialise displacement list
+    #     u = [0.0 * ii for ii in range(self.num_nodes * 3)]
+    #     pressure_force = get_pressure_force(self)
+    #     dt = self.real_time_step
+    #     dt = 1
+    #     if self.rank == 0:
+    #         # rank 0 tasks
+    #         config.logger.info("Pressure forces: {}".format(np.sum(pressure_force, axis=0)))
+    #         config.logger.info("dX shape: {} x {}".format(pressure_force.shape[0], pressure_force.shape[1]))
+    #         structural_force = self.IDWMapper.map(pressure_force)
+    #         # self.multiscale.multiscale_solve(pressure_force, True)
+    #         # self.multiscale.multiscale_transfer()
+    #         # structural_force = self.multiscale.get_dV()
+
+    #         modal_forcing = self.genericmodalmodel.calculate_modal_forcing(structural_force)
+    #         config.logger.info("Structural forces: {}".format(np.sum(structural_force, axis=0)))
+    #         config.logger.info("Modal Forcing: {}".format(modal_forcing[0]))
+    #         print(modal_forcing)
+    #         displacements = self.genericmodalmodel.calculate_modal_displacements(modal_forcing, 0.5)
+    #         self.multiscale2.multiscale_solve(displacements, True)
+    #         self.multiscale2.multiscale_transfer()
+    #         aero_displacements = self.multiscale2.get_dV()
+
+
+    #         aero_disp = list(aero_displacements.flatten())
+    #         u = aero_disp
+
+    #     u = MPI.COMM_WORLD.bcast(u, root=0)
+    #     dt = MPI.COMM_WORLD.bcast(dt, root=0)
+    #     # Perform RBF and mesh updates
+    #     print(max(u))
+    #     self.fsi.deform_mesh(self.mesh[0], u, dt, False)
+
+    pass
 
 
 def post_solve(self):

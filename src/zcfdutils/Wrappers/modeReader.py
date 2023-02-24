@@ -32,7 +32,7 @@ class cba_modal():
 
         row_ctr += 3
 
-        self.eigenvectors = np.zeros((self.num_modes, self.n_pts, 3))
+        self.eigenvectors = np.zeros((self.num_modes, self.n_pts, self.n_Dof))
 
         # read eigen vectors
         for i in range(self.num_modes):

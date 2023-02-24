@@ -31,7 +31,7 @@ from zcfd.utils import config
 from libmultiscale import multiscale
 # from zcfd.utils.GenericModeReader import GenericModeReader
 # from zcfd.utils.NastranReader import NastranReader
-from zcfd.utils.coupling.genericmodalmodel import genericmodalmodel
+from zcfdutils.genericmodalmodel import genericmodalmodel
 from zcfdutils.Wrappers.modeReader import cba_modal
 from zcfdutils.py_rbf import IDWMapper
 
@@ -104,6 +104,8 @@ def post_init(self):
 
     # RBF pre-processing
     self.fsi.init_morphing(self.mesh[0])
+
+    config.logger.info("Hello!")
 
 
 def start_real_time_cycle(self):

@@ -55,7 +55,7 @@ class cba_modal():
                 self.grid[i, 0], self.grid[i, 1], self.grid[i, 2]))
         f.close()
 
-    def write_grid_csv(self, fname):
+    def write_grid_csv(self, fname: str):
         f = open(fname, 'w')
         f.write("X, Y, Z, ")
         for i in range(self.num_modes):
@@ -75,3 +75,36 @@ class cba_modal():
     def calculate_mode_frequencies(self):
         self.mode_frequencies = np.array(
             [np.sqrt(i) for i in self.eigenvalues])
+
+    def write_modes(self, fname='modes.cba'):
+        with open(fname, 'w') as f:
+            f.write('1\n')
+            f.write('Number of Modes\n')
+            f.write('{}\n'.format(self.num_modes))
+            f.write('eigenvalues:\n')
+            for e in self.eigenvalues:
+                f.write('{}\n'.format(e))
+            f.write('PLT1\n')
+            f.write('{}\n'.format(self.n_pts))
+            f.write('Numer of Dof\n')
+            f.write('{}\n'.format(self.n_Dof))
+            f.write('degrees of freedom (x=1, y=2, z=3, rotx=4, roty=5, rotz=6)\n')
+            for d in self.Dof:
+                f.write('{} '.format(int(d)))
+            f.write('\n')
+            f.write('eigenvectors: \n')
+            for m in range(self.num_modes):
+                f.write('{}\n'.format(m))
+                for i in range(self.n_pts):
+                    for j in range(self.n_Dof):
+                        f.write('{} \t'.format(self.eigenvectors[m, i, j]))
+                    f.write('\n')
+            f.write('grid\n')
+            for i in range(self.n_pts):
+                for j in range(3):
+                    f.write('{} \t'.format(self.grid[i, j]))
+                f.write('\n')
+
+
+        
+            

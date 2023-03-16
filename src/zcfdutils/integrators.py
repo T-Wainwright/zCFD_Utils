@@ -6,7 +6,7 @@ import os
 
 
 class Integrator_base():
-    def __init__(self, num_modes, M, C, K) -> None:
+    def __init__(self, num_modes, reader) -> None:
         self.n_DOF = num_modes
 
         self.q = np.zeros((self.n_DOF, 1))
@@ -17,9 +17,9 @@ class Integrator_base():
         self.qdot_n = np.zeros((self.n_DOF, 1))
         self.qddot_n = np.zeros((self.n_DOF, 1))
 
-        self.M = M
-        self.C = C
-        self.K = K
+        self.M = reader.M
+        self.C = reader.C
+        self.K = reader.K
 
     def integrate(self, F):
         pass
@@ -74,8 +74,8 @@ class Integrator_base():
 
 
 class Generalised_a_Integrator(Integrator_base):
-    def __init__(self, num_modes, M, C, K, dt, rho_e=0.5) -> None:
-        super().__init__(num_modes, M, C, K)
+    def __init__(self, num_modes, reader, dt, rho_e=0.5) -> None:
+        super().__init__(num_modes, reader)
 
         self.a = np.zeros((self.n_DOF, 1))
         self.a_n = np.zeros((self.n_DOF, 1))
@@ -135,8 +135,8 @@ class Generalised_a_Integrator(Integrator_base):
 
 
 class Newmark_Integrator(Integrator_base):
-    def __init__(self, num_modes, M, C, K, dt, alpha=0.25, delta=0.5) -> None:
-        super().__init__(num_modes, M, C, K)
+    def __init__(self, num_modes, reader, dt, alpha=0.25, delta=0.5) -> None:
+        super().__init__(num_modes, reader)
 
         self.newmark_alpha = alpha
         self.newmark_delta = delta
@@ -163,11 +163,18 @@ class Newmark_Integrator(Integrator_base):
 
 
 class Relaxation_Integrator(Integrator_base):
-    def __init__(self, num_modes, M, C, K, relaxation_factor=0.5) -> None:
-        super().__init__(num_modes, M, C, K)
+    def __init__(self, num_modes, reader, relaxation_factor=0.5) -> None:
+        super().__init__(num_modes, reader)
 
         self.relaxation_factor = relaxation_factor
 
     def integrate(self, F):
         print('flag')
         self.q = self.q_n + self.relaxation_factor * (F - self.q_n)
+
+class Direct_Solve(Integrator_base):
+    def __init__(self, num_modes, reader) -> None:
+        super().__init__(num_modes, reader)
+
+    def integrate(self, F):
+        self.q = np.linalg.solve(self.K, F)

@@ -5,13 +5,13 @@ import zcfdutils.integrators
 
 
 class genericmodalmodel():
-    def __init__(self, grid_points, mode_freqs, mode_data, dt, mode_list=None, mode_damping=None, integrator='generalised alpha'):
+    def __init__(self, reader, dt, mode_list=None, mode_damping=None, integrator='generalised alpha'):
         # Set initial values
-        self.grid_points = grid_points
-        self.mode_freqs = np.array([i / (2*np.pi) for i in mode_freqs])
-        self.mode_data = mode_data
-        self.num_grid_points = grid_points.shape[0]
-        self.num_modes = len(mode_freqs)
+        self.grid_points = reader.grid_points
+        self.mode_freqs = np.array([i / (2*np.pi) for i in reader.mode_freqs])
+        self.mode_data = reader.mode_data
+        self.num_grid_points = reader.grid_points.shape[0]
+        self.num_modes = len(reader.mode_freqs)
         self.critical_damping = 2.0 * self.mode_freqs
 
         if not mode_list:
@@ -19,10 +19,10 @@ class genericmodalmodel():
         else:
             self.mode_list = mode_list
             self.num_modes = len(self.mode_list)
-            self.mode_freqs = np.array([mode_freqs[i] / (2 * np.pi)  for i in mode_list])
-            self.mode_data = np.zeros((self.num_modes, self.num_grid_points, mode_data.shape[2]))
+            self.mode_freqs = np.array([reader.mode_freqs[i] / (2 * np.pi)  for i in mode_list])
+            self.mode_data = np.zeros((self.num_modes, self.num_grid_points, reader.mode_data.shape[2]))
             for i, m in enumerate(self.mode_list):
-                self.mode_data[i, :, :] = mode_data[m, :, :]
+                self.mode_data[i, :, :] = reader.mode_data[m, :, :]
 
 
         if not mode_damping:
@@ -32,24 +32,22 @@ class genericmodalmodel():
 
         self.modal_forcing = np.zeros((self.num_modes, 1))
 
-        M = np.identity(self.num_modes)
-        C = np.diag(self.mode_damping)
-        K = np.diag([l ** 2 for l in self.mode_freqs])
-
         self.dt = dt
 
-        self.set_integrator(integrator, M, C, K)
+        self.set_integrator(integrator, reader)
 
-    def set_integrator(self, integrator, M, C, K):
+    def set_integrator(self, integrator, reader):
         if integrator == 'generalised alpha':
             self.integrator = zcfdutils.integrators.Generalised_a_Integrator(
-                self.num_modes, M, C, K, self.dt)
+                self.num_modes, reader, self.dt)
         elif integrator == 'newmark':
             self.integrator = zcfdutils.integrators.Newmark_Integrator(
-                self.num_modes, M, C, K, self.dt)
+                self.num_modes, reader, self.dt)
         elif integrator == 'relaxation':
             self.integrator = zcfdutils.integrators.Relaxation_Integrator(
-                self.num_modes, M, C, K)
+                self.num_modes, reader)
+        elif integrator == 'direct solve':
+            self.integrator = zcfdutils.integrators.Direct_Solve(self.num_modes, reader)
 
     def set_initial_conditions(self, initial):
         self.integrator.set_initial_conditions(q0=initial)
@@ -70,10 +68,6 @@ class genericmodalmodel():
             self.modal_forcing += np.array(
                 [self.mode_data[:, :, i].dot(force[:, i])]).T
 
-        # for m in range(self.num_modes):
-            # config.logger.info(
-            #     "Modal Forcing: {}".format(self.modal_forcing[m]))
-
     def integrate_solution(self):
         self.integrator.copy_time_history()
         self.integrator.integrate(self.modal_forcing)
@@ -83,13 +77,10 @@ class genericmodalmodel():
             solve_cycle, real_timestep, self.modal_forcing)
 
     def get_displacements(self):
-        displacements = np.zeros_like(self.grid_points)
-        # for i in range(3):
-        #     displacements[:, i] += self.mode_data[:,
-        #                                           :, 0].T.dot(self.integrator.q)[0]
+        displacements = np.zeros((self.num_grid_points, 6))
         for m in range(self.num_modes):
             for i in range(self.num_grid_points):
-                for j in range(3):
+                for j in range(6):
                     displacements[i, j] += self.integrator.q[m] * self.mode_data[m, i, j]
         return displacements    
 

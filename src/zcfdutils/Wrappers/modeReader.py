@@ -4,11 +4,11 @@ from pyNastran.op2.op2 import read_op2
 from pyNastran.bdf.bdf import BDF
 import os
 from zcfd.utils import config
+from scipy.io import loadmat
 
 
 
 # class to read cba modal results file
-
 
 class cba_modal():
     def __init__(self, fname=None) -> None:
@@ -51,6 +51,12 @@ class cba_modal():
 
         self.grid_points = np.loadtxt(
             fname, skiprows=row_ctr, max_rows=self.num_grid_points)
+            
+        self.calculate_mode_frequencies()
+
+        self.M = np.identity(self.num_modes)
+        self.C = np.diag([0 for i in range(self.num_modes)])
+        self.K = np.diag([(l / (2 * np.pi)) ** 2 for l in self.mode_freqs])
 
     def calculate_norms(self):
         self.norms = np.zeros((self.num_modes, self.num_grid_points))
@@ -114,6 +120,12 @@ class cba_modal():
                 for j in range(3):
                     f.write('{} \t'.format(self.grid_points[i, j]))
                 f.write('\n')
+
+    def get_moving_nodes(self):
+        return self.grid_points
+
+    def get_loading_nodes(self):
+        return self.grid_points
 
 
 class NastranReader:
@@ -201,9 +213,139 @@ class NastranReader:
 
         self.mode_data = mode_data
 
+        self.M = np.identity(self.num_modes)
+        self.C = np.diag(self.mode_damping)
+        self.K = np.diag([(l / (2 * np.pi))**2 for l in self.mode_freqs])
+
     def print_op2_stats(self, short=False):
         print(self.op2.get_op2_stats(short), flush=True)
 
     def print_bdf(self):
         print(self.bdf.object_attributes(), flush=True)
         print(self.bdf.object_methods(), flush=True)
+
+    def get_moving_nodes(self):
+        return self.grid_points
+    
+    def get_loading_nodes(self):
+        return self.grid_points
+
+class atomReader():
+    def __init__(self, fname) -> None:
+        ATOM_FE = loadmat(fname, squeeze_me=False)
+        ATOM_Modal = ATOM_FE['Modal']
+        # Got to have some gross indexing in here due to pythons loadmat behavior
+        atom_grid_points = ATOM_FE['BeamAxis_123']
+        self.num_modes = int(ATOM_Modal['nEigval'][0][0][0][0])
+        self.num_grid_points = atom_grid_points.shape[0]
+
+        self.M = ATOM_Modal['Mmodal'][0][0]
+        self.C = ATOM_Modal['Cmodal'][0][0]
+        self.K = ATOM_Modal['Kmodal'][0][0]
+
+        self.mode_data_mat = ATOM_Modal['Eigvec'][0][0]
+
+        mode_data_atom = np.zeros((self.num_modes, self.num_grid_points, 6))
+
+        for m in range(self.num_modes):
+            for i in range(self.num_grid_points - 1):
+                for j in range(6):
+                    mode_data_atom[m, i + 1, j] = self.mode_data_mat[6 * i + j, m]
+
+        mode_freq = []
+        for i in range(self.num_modes):
+            mode_freq.append(ATOM_Modal['ModeShape'][0][0][i][0][0][0][0])
+
+        self.mode_freqs = np.array(mode_freq)
+
+        # ATOM uses a blade centric coordinate system:
+        # x positive along blade
+        # y positive in flow direction
+        # z positive in a right hand set
+
+        # CFD uses a tower centric coorcinate system:
+        # x positive in flow direction
+        # y positive in a right hand set
+        # z positive along the blade
+
+        self.grid_points = np.zeros((self.num_grid_points, 3))
+        self.grid_points[:, 0] = atom_grid_points[:, 1]
+        self.grid_points[:, 1] = atom_grid_points[:, 2]
+        self.grid_points[:, 2] = atom_grid_points[:, 0] + 3.0
+
+        self.mode_data = np.zeros((self.num_modes, self.num_grid_points, 6))
+        self.mode_data[:, :, 0] = mode_data_atom[:, :, 1]
+        self.mode_data[:, :, 1] = mode_data_atom[:, :, 2]
+        self.mode_data[:, :, 2] = mode_data_atom[:, :, 0]
+        self.mode_data[:, :, 3] = mode_data_atom[:, :, 4]
+        self.mode_data[:, :, 4] = mode_data_atom[:, :, 5]
+        self.mode_data[:, :, 5] = mode_data_atom[:, :, 3]
+
+        self.add_ribs(rib_length=3)
+
+
+    def add_ribs(self, rib_length=1):
+        self.rib_nodes = np.zeros((self.num_grid_points * 4, 3))
+        N_offset = [1 * rib_length, 0, 0]
+        S_offset = [-1 * rib_length, 0, 0]
+        E_offset = [0, 2 * rib_length, 0]
+        W_offset = [0, -1 * rib_length, 0]
+
+        for i in range(self.num_grid_points):
+            self.rib_nodes[i * 4 + 0, :] = self.grid_points[i, :] + N_offset
+            self.rib_nodes[i * 4 + 1, :] = self.grid_points[i, :] + S_offset
+            self.rib_nodes[i * 4 + 2, :] = self.grid_points[i, :] + E_offset
+            self.rib_nodes[i * 4 + 3, :] = self.grid_points[i, :] + W_offset
+
+    def deform_ribs(self, displacements):
+        rib_displacements = np.zeros((self.num_grid_points * 4, 3))
+        # pure displacements
+        for i in range(self.num_grid_points):
+            rib_displacements[i * 4 + 0, :] = displacements[i, :3]
+            rib_displacements[i * 4 + 1, :] = displacements[i, :3]
+            rib_displacements[i * 4 + 2, :] = displacements[i, :3]
+            rib_displacements[i * 4 + 3, :] = displacements[i, :3]
+
+        rib_displacements_twist = np.zeros_like(rib_displacements)
+        # pure twist
+        for i in range(self.num_grid_points):
+            rib_displacements_twist[i * 4 + 0, :] += self.rib_nodes[i * 4 + 0, :] - self.R_z(displacements[i, 5]) @ self.rib_nodes[i * 4 + 0, :] 
+            rib_displacements_twist[i * 4 + 1, :] += self.rib_nodes[i * 4 + 1, :] - self.R_z(displacements[i, 5]) @ self.rib_nodes[i * 4 + 1, :]
+            rib_displacements_twist[i * 4 + 2, :] += self.rib_nodes[i * 4 + 2, :] - self.R_z(displacements[i, 5]) @ self.rib_nodes[i * 4 + 2, :] 
+            rib_displacements_twist[i * 4 + 3, :] += self.rib_nodes[i * 4 + 3, :] - self.R_z(displacements[i, 5]) @ self.rib_nodes[i * 4 + 3, :]
+
+        return rib_displacements, rib_displacements_twist
+    
+    def R_z(self, a):
+        r = np.array([[np.cos(a), -np.sin(a), 0],[np.sin(a), np.cos(a), 0],[0, 0, 1]])
+        return r
+
+    def write_beamstick_deformed(self, displacements, fname='beamstick_rib_deformed.csv'):
+        with open(fname, 'w') as f:
+            f.write('X, Y, Z, \t\n')
+            for i in range(self.num_grid_points * 4):
+                for j in range(3):
+                    f.write('{}, \t'.format(self.rib_nodes[i, j] + displacements[i, j]))
+                f.write('\n')
+
+    def write_beamstick(self, fname='beamstick.csv'):
+        with open(fname, 'w') as f:
+            f.write('X, Y, Z, \t\n')
+            for i in range(self.num_grid_points):
+                for j in range(3):
+                    f.write('{}, \t'.format(self.grid_points[i, j]))
+                f.write('\n')
+            for i in range(self.num_grid_points * 4):
+                for j in range(3):
+                    f.write('{}, \t'.format(self.rib_nodes[i, j]))
+                f.write('\n')
+
+    def get_moving_nodes(self):
+        return np.concatenate((self.grid_points, self.rib_nodes), axis=0)
+    
+    def get_loading_nodes(self):
+        return self.grid_points
+    
+
+
+

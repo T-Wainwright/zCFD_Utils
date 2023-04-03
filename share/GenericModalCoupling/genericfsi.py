@@ -154,7 +154,7 @@ def start_real_time_cycle(self):
 
             if self.parameters['fsi']['user variables']['filetype'] == 'atom':
                 translation, rotation = self.mm.deform_ribs(displacements)
-                rib_deformations = translation + rotation
+                rib_deformations = translation - rotation
                 self.mm.write_beamstick_deformed(rib_deformations)
                 displacements = np.concatenate((displacements[:, 0:3], rib_deformations), axis=0)
 
@@ -164,6 +164,10 @@ def start_real_time_cycle(self):
             self.multiscaleInterpolator.multiscale_solve(displacements, False)
             self.multiscaleInterpolator.multiscale_transfer()
             self.aero_displacements = self.multiscaleInterpolator.get_dV()
+
+            # k = 2/(120 ** 2)
+            # self.aero_displacements = np.zeros_like(self.aero_displacements)
+            # self.aero_displacements[:, 0] = self.aero_nodes[:, 2]**2 * k
 
 
             with open("displacements_{:04d}.csv".format(int(self.real_time_cycle)), 'w') as f:
@@ -197,6 +201,11 @@ def start_real_time_cycle(self):
         config.logger.info("max U: {}".format(max(u)))
         self.fsi.deform_mesh(self.mesh[0], u, dt, True)
         self.pseudo_fsi_cycles = 0
+
+        # clear out more meshes
+
+        self.solver.generate_coarse_meshes(self.mesh)
+
 
 
 def post_advance(self):
@@ -238,7 +247,7 @@ def post_advance(self):
 
             if self.parameters['fsi']['user variables']['filetype'] == 'atom':
                 translation, rotation = self.mm.deform_ribs(displacements)
-                rib_deformations = translation + rotation
+                rib_deformations = translation - rotation
                 self.mm.write_beamstick_deformed(rib_deformations)
                 displacements = np.concatenate((displacements[:, 0:3], rib_deformations), axis=0)
 
@@ -249,6 +258,10 @@ def post_advance(self):
             self.multiscaleInterpolator.multiscale_solve(displacements, False)
             self.multiscaleInterpolator.multiscale_transfer()
             self.aero_displacements = self.multiscaleInterpolator.get_dV()
+
+            # k = 2/(120 ** 2)
+            # self.aero_displacements = np.zeros_like(self.aero_displacements)
+            # self.aero_displacements[:, 0] = self.aero_nodes[:, 2]**2 * k
 
             with open("displacements_{:04d}.csv".format(int(self.real_time_cycle)), 'w') as f:
                 f.write("X, Y, Z\n")
@@ -278,6 +291,8 @@ def post_advance(self):
         # Perform RBF and mesh updates
         config.logger.info("max U: {}".format(max(u)))
         self.fsi.deform_mesh(self.mesh[0], u, dt, True)
+
+        self.solver.generate_coarse_meshes(self.mesh)
 
 
 def post_solve(self):

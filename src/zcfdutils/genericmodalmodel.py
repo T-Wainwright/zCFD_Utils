@@ -18,9 +18,9 @@ class genericmodalmodel():
             self.mode_list = [i for i in range(self.num_modes)]
         else:
             self.mode_list = mode_list
-            self.num_modes = len(self.mode_list)
-            self.mode_freqs = np.array([reader.mode_freqs[i] / (2 * np.pi)  for i in mode_list])
-            self.mode_data = np.zeros((self.num_modes, self.num_grid_points, reader.mode_data.shape[2]))
+            # self.num_modes = len(self.mode_list)
+            # self.mode_freqs = np.array([reader.mode_freqs[i] / (2 * np.pi)  for i in mode_list])
+            # self.mode_data = np.zeros((self.num_modes, self.num_grid_points, reader.mode_data.shape[2]))
             for i, m in enumerate(self.mode_list):
                 self.mode_data[i, :, :] = reader.mode_data[m, :, :]
 
@@ -38,22 +38,19 @@ class genericmodalmodel():
 
     def set_integrator(self, integrator, reader):
         if integrator == 'generalised alpha':
-            self.integrator = zcfdutils.integrators.Generalised_a_Integrator(
-                self.num_modes, reader, self.dt)
+            self.integrator = zcfdutils.integrators.Generalised_a_Integrator(reader, self.dt)
         elif integrator == 'newmark':
-            self.integrator = zcfdutils.integrators.Newmark_Integrator(
-                self.num_modes, reader, self.dt)
+            self.integrator = zcfdutils.integrators.Newmark_Integrator(reader, self.dt)
         elif integrator == 'relaxation':
-            self.integrator = zcfdutils.integrators.Relaxation_Integrator(
-                self.num_modes, reader)
+            self.integrator = zcfdutils.integrators.Relaxation_Integrator(reader)
         elif integrator == 'direct solve':
-            self.integrator = zcfdutils.integrators.Direct_Solve(self.num_modes, reader)
+            self.integrator = zcfdutils.integrators.Direct_Solve(reader)
 
     def set_initial_conditions(self, initial):
         self.integrator.set_initial_conditions(q0=initial)
 
         displacements = np.zeros_like(self.grid_points)
-        for m in range(self.num_modes):
+        for m in self.mode_list:
             displacements += self.integrator.q[m] * \
                 self.mode_data[m, :, 0:3]
 
@@ -74,11 +71,11 @@ class genericmodalmodel():
 
     def write_force_history(self, solve_cycle, real_timestep):
         self.integrator.write_force_history(
-            solve_cycle, real_timestep, self.modal_forcing)
+            solve_cycle, real_timestep, self.modal_forcing, self.mode_list)
 
     def get_displacements(self):
         displacements = np.zeros((self.num_grid_points, 6))
-        for m in range(self.num_modes):
+        for m in self.mode_list:
             for i in range(self.num_grid_points):
                 for j in range(6):
                     displacements[i, j] += self.integrator.q[m] * self.mode_data[m, i, j]
@@ -99,13 +96,13 @@ class genericmodalmodel():
     def write_grid_csv(self, fname='modal_model_grid.csv'):
         with open(fname, 'w') as f:
             f.write('X, Y, Z, ')
-            for m in range(self.num_modes):
+            for m in self.mode_list:
                 f.write('mode{}X, mode{}Y, mode{}Z, '.format(m, m, m))
             f.write('\n')
             for i in range(self.num_grid_points):
                 for j in range(3):
                     f.write('{}, '.format(self.grid_points[i, j]))
-                for m in range(self.num_modes):
+                for m in self.mode_list:
                     for j in range(3):
                         f.write('{}, '.format(self.mode_data[m, i, j]))
                 f.write('\n')

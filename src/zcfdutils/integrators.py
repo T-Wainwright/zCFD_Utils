@@ -6,8 +6,8 @@ import os
 
 
 class Integrator_base():
-    def __init__(self, num_modes, reader) -> None:
-        self.n_DOF = num_modes
+    def __init__(self, reader) -> None:
+        self.n_DOF = reader.num_modes
 
         self.q = np.zeros((self.n_DOF, 1))
         self.qdot = np.zeros((self.n_DOF, 1))
@@ -55,13 +55,13 @@ class Integrator_base():
         self.qddot = np.linalg.solve(self.M, RHS)
         self.qddot_n = self.qddot
 
-    def write_force_history(self, solve_cycle, real_timestep, force, fname='modal_force_history.csv'):
+    def write_force_history(self, solve_cycle, real_timestep, force, mode_list, fname='modal_force_history.csv'):
         if os.path.exists(fname):
             f = open(fname, 'a')
         else:
             f = open(fname, 'w')
             f.write('Solve_Cycle, Real_TimeStep, ')
-            for m in range(self.n_DOF):
+            for m in mode_list:
                 f.write('mode{}_Weight, mode{}_displacement, mode{}_velocity, mode{}_acceleration, '.format(
                     m, m, m, m))
             f.write('\n')
@@ -74,8 +74,8 @@ class Integrator_base():
 
 
 class Generalised_a_Integrator(Integrator_base):
-    def __init__(self, num_modes, reader, dt, rho_e=0.5) -> None:
-        super().__init__(num_modes, reader)
+    def __init__(self, reader, dt, rho_e=0.5) -> None:
+        super().__init__(reader)
 
         self.a = np.zeros((self.n_DOF, 1))
         self.a_n = np.zeros((self.n_DOF, 1))
@@ -135,8 +135,8 @@ class Generalised_a_Integrator(Integrator_base):
 
 
 class Newmark_Integrator(Integrator_base):
-    def __init__(self, num_modes, reader, dt, alpha=0.25, delta=0.5) -> None:
-        super().__init__(num_modes, reader)
+    def __init__(self, reader, dt, alpha=0.25, delta=0.5) -> None:
+        super().__init__(reader)
 
         self.newmark_alpha = alpha
         self.newmark_delta = delta
@@ -163,8 +163,8 @@ class Newmark_Integrator(Integrator_base):
 
 
 class Relaxation_Integrator(Integrator_base):
-    def __init__(self, num_modes, reader, relaxation_factor=0.5) -> None:
-        super().__init__(num_modes, reader)
+    def __init__(self, reader, relaxation_factor=0.5) -> None:
+        super().__init__(reader)
 
         self.relaxation_factor = relaxation_factor
 
@@ -173,8 +173,8 @@ class Relaxation_Integrator(Integrator_base):
         self.q = self.q_n + self.relaxation_factor * (F - self.q_n)
 
 class Direct_Solve(Integrator_base):
-    def __init__(self, num_modes, reader) -> None:
-        super().__init__(num_modes, reader)
+    def __init__(self, reader) -> None:
+        super().__init__(reader)
 
     def integrate(self, F):
         self.q = np.linalg.solve(self.K, F)

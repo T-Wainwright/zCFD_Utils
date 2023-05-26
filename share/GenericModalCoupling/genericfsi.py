@@ -33,7 +33,6 @@ from libmultiscale import multiscale
 from zcfdutils.genericmodalmodel import genericmodalmodel
 from zcfdutils.py_rbf import IDWMapper
 from zcfdutils.Wrappers import modeReader
-from scipy.interpolate import CubicSpline
 
 
 def get_pressure_force(self):
@@ -56,7 +55,7 @@ def get_pressure_force(self):
 def post_init(self):
     # create solver interface object
     self.fsi = create_generic_fsi(
-        self.solverlib, self.parameters['case name'], self.parameters['problem name'], self.parameters)
+        self.solverlib, self.parameters['case name'], self.parameters['mesh name'], self.parameters)
     self.fsi.init(self.mesh[0])
 
     # Get rank
@@ -107,7 +106,7 @@ def post_init(self):
         config.logger.info("moving nodes shape: {}".format(self.mm.get_moving_nodes().shape))
 
         self.multiscaleInterpolator = multiscale(
-            self.mm.get_moving_nodes(), 1.0, 120.0, False)
+            self.mm.get_moving_nodes(), 1.0, 120.0, True)
         self.multiscaleInterpolator.sample_control_points(False)
         self.multiscaleInterpolator.preprocess_V(self.aero_nodes)
 
@@ -154,7 +153,7 @@ def start_real_time_cycle(self):
 
             if self.parameters['fsi']['user variables']['filetype'] == 'atom':
                 translation, rotation = self.mm.deform_ribs(displacements)
-                rib_deformations = translation - rotation
+                rib_deformations = translation + rotation
                 self.mm.write_beamstick_deformed(rib_deformations)
                 displacements = np.concatenate((displacements[:, 0:3], rib_deformations), axis=0)
 
@@ -247,7 +246,7 @@ def post_advance(self):
 
             if self.parameters['fsi']['user variables']['filetype'] == 'atom':
                 translation, rotation = self.mm.deform_ribs(displacements)
-                rib_deformations = translation - rotation
+                rib_deformations = translation + rotation
                 self.mm.write_beamstick_deformed(rib_deformations)
                 displacements = np.concatenate((displacements[:, 0:3], rib_deformations), axis=0)
 

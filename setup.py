@@ -21,7 +21,11 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-        'scikit-learn',
+        "scikit-learn",
+        "numpy",
+        "matplotlib",
+        "h5py",
+        "pandas",
     ],
     package_dir={"": "src"},
     packages=setuptools.find_packages(where="src"),

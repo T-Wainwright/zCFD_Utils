@@ -38,3 +38,4 @@ Modal_data.h5
 !data/surface.xyz
 !data/volume.xyz
 !data/displacements.xyz
+.venv

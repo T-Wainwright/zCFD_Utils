@@ -19,14 +19,18 @@ def plot_report_batch(report: Report, variables: list = None, mean: int = 20):
                 print(f"Variable '{var}' is valid.  ")
                 report.plot_forces(mean=mean)
                 for cb in report.checkboxes:
+                    print("checking: " + cb.description)
                     if cb.description == var:
                         cb.value = True
 
-                    report.plot_data(1)
-                    fig = plt.gcf()
-                    fig.savefig(f"plot_{var}.png")
+                        # plot and save
+                        report.plot_data(1)
+                        fig = plt.gcf()
+                        fig.savefig(f"plot_{var}.png")
+                        # return value to 0
+                        cb.value = False
 
 
 plot_report_batch(r.reports[0])
 
-plot_report_batch(r.reports[0], ["probe_cp"])
+plot_report_batch(r.reports[0], ["pt_1_V_x", "pt_2_V_x"])
